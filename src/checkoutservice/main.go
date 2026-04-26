@@ -108,19 +108,31 @@ func main() {
 	}
 
 	svc := new(checkoutService)
-	mustMapEnv(&svc.shippingSvcAddr, "SHIPPING_SERVICE_ADDR")
-	mustMapEnv(&svc.productCatalogSvcAddr, "PRODUCT_CATALOG_SERVICE_ADDR")
-	mustMapEnv(&svc.cartSvcAddr, "CART_SERVICE_ADDR")
-	mustMapEnv(&svc.currencySvcAddr, "CURRENCY_SERVICE_ADDR")
-	mustMapEnv(&svc.emailSvcAddr, "EMAIL_SERVICE_ADDR")
-	mustMapEnv(&svc.paymentSvcAddr, "PAYMENT_SERVICE_ADDR")
+	mapEnv(&svc.shippingSvcAddr, "SHIPPING_SERVICE_ADDR")
+	mapEnv(&svc.productCatalogSvcAddr, "PRODUCT_CATALOG_SERVICE_ADDR")
+	mapEnv(&svc.cartSvcAddr, "CART_SERVICE_ADDR")
+	mapEnv(&svc.currencySvcAddr, "CURRENCY_SERVICE_ADDR")
+	mapEnv(&svc.emailSvcAddr, "EMAIL_SERVICE_ADDR")
+	mapEnv(&svc.paymentSvcAddr, "PAYMENT_SERVICE_ADDR")
 
-	mustConnGRPC(ctx, &svc.shippingSvcConn, svc.shippingSvcAddr)
 	mustConnGRPC(ctx, &svc.productCatalogSvcConn, svc.productCatalogSvcAddr)
-	mustConnGRPC(ctx, &svc.cartSvcConn, svc.cartSvcAddr)
-	mustConnGRPC(ctx, &svc.currencySvcConn, svc.currencySvcAddr)
-	mustConnGRPC(ctx, &svc.emailSvcConn, svc.emailSvcAddr)
-	mustConnGRPC(ctx, &svc.paymentSvcConn, svc.paymentSvcAddr)
+
+	// optional
+	if svc.shippingSvcAddr != "" {
+		mustConnGRPC(ctx, &svc.shippingSvcConn, svc.shippingSvcAddr)
+	}
+	if svc.cartSvcAddr != "" {
+		mustConnGRPC(ctx, &svc.cartSvcConn, svc.cartSvcAddr)
+	}
+	if svc.currencySvcAddr != "" {
+		mustConnGRPC(ctx, &svc.currencySvcConn, svc.currencySvcAddr)
+	}
+	if svc.emailSvcAddr != "" {
+		mustConnGRPC(ctx, &svc.emailSvcConn, svc.emailSvcAddr)
+	}
+	if svc.paymentSvcAddr != "" {
+		mustConnGRPC(ctx, &svc.paymentSvcConn, svc.paymentSvcAddr)
+	}
 
 	log.Infof("service config: %+v", svc)
 
@@ -143,6 +155,7 @@ func main() {
 	healthcheck := health.NewServer()
 	healthpb.RegisterHealthServer(srv, healthcheck)
 	log.Infof("starting to listen on tcp: %q", lis.Addr().String())
+	startMetricsServer("9090")
 	err = srv.Serve(lis)
 	log.Fatal(err)
 }
@@ -161,7 +174,7 @@ func initTracing() {
 	ctx, cancel := context.WithTimeout(ctx, time.Second*3)
 	defer cancel()
 
-	mustMapEnv(&collectorAddr, "COLLECTOR_SERVICE_ADDR")
+	mapEnv(&collectorAddr, "COLLECTOR_SERVICE_ADDR")
 	mustConnGRPC(ctx, &collectorConn, collectorAddr)
 
 	exporter, err := otlptracegrpc.New(
@@ -199,15 +212,17 @@ func initProfiling(service, version string) {
 	log.Warn("could not initialize Stackdriver profiler after retrying, giving up")
 }
 
-func mustMapEnv(target *string, envKey string) {
-	v := os.Getenv(envKey)
-	if v == "" {
-		panic(fmt.Sprintf("environment variable %q not set", envKey))
+func mapEnv(target *string, envKey string) {
+	*target = os.Getenv(envKey)
+	if *target == "" {
+		log.Warnf("optional service %q not configured, skipping", envKey)
 	}
-	*target = v
 }
 
 func mustConnGRPC(ctx context.Context, conn **grpc.ClientConn, addr string) {
+	if addr == "" {
+		return // leave nil, callers must guard
+	}
 	var err error
 	_, cancel := context.WithTimeout(ctx, time.Second*3)
 	defer cancel()
@@ -311,10 +326,11 @@ func (cs *checkoutService) prepareOrderItemsAndShippingQuoteFromCart(ctx context
 }
 
 func (cs *checkoutService) quoteShipping(ctx context.Context, address *pb.Address, items []*pb.CartItem) (*pb.Money, error) {
+	if cs.shippingSvcConn == nil {
+		return &pb.Money{CurrencyCode: usdCurrency, Units: 0, Nanos: 0}, nil
+	}
 	shippingQuote, err := pb.NewShippingServiceClient(cs.shippingSvcConn).
-		GetQuote(ctx, &pb.GetQuoteRequest{
-			Address: address,
-			Items:   items})
+		GetQuote(ctx, &pb.GetQuoteRequest{Address: address, Items: items})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get shipping quote: %+v", err)
 	}
@@ -322,18 +338,24 @@ func (cs *checkoutService) quoteShipping(ctx context.Context, address *pb.Addres
 }
 
 func (cs *checkoutService) getUserCart(ctx context.Context, userID string) ([]*pb.CartItem, error) {
-	cart, err := pb.NewCartServiceClient(cs.cartSvcConn).GetCart(ctx, &pb.GetCartRequest{UserId: userID})
+	if cs.cartSvcConn == nil {
+		return []*pb.CartItem{}, nil // empty cart
+	}
+	cart, err := pb.NewCartServiceClient(cs.cartSvcConn).
+		GetCart(ctx, &pb.GetCartRequest{UserId: userID})
 	if err != nil {
-		return nil, fmt.Errorf("failed to get user cart during checkout: %+v", err)
+		return nil, fmt.Errorf("failed to get user cart: %+v", err)
 	}
 	return cart.GetItems(), nil
 }
 
 func (cs *checkoutService) emptyUserCart(ctx context.Context, userID string) error {
-	if _, err := pb.NewCartServiceClient(cs.cartSvcConn).EmptyCart(ctx, &pb.EmptyCartRequest{UserId: userID}); err != nil {
-		return fmt.Errorf("failed to empty user cart during checkout: %+v", err)
+	if cs.cartSvcConn == nil {
+		return nil
 	}
-	return nil
+	_, err := pb.NewCartServiceClient(cs.cartSvcConn).
+		EmptyCart(ctx, &pb.EmptyCartRequest{UserId: userID})
+	return err
 }
 
 func (cs *checkoutService) prepOrderItems(ctx context.Context, items []*pb.CartItem, userCurrency string) ([]*pb.OrderItem, error) {
@@ -357,36 +379,46 @@ func (cs *checkoutService) prepOrderItems(ctx context.Context, items []*pb.CartI
 }
 
 func (cs *checkoutService) convertCurrency(ctx context.Context, from *pb.Money, toCurrency string) (*pb.Money, error) {
-	result, err := pb.NewCurrencyServiceClient(cs.currencySvcConn).Convert(context.TODO(), &pb.CurrencyConversionRequest{
-		From:   from,
-		ToCode: toCurrency})
+	if cs.currencySvcConn == nil || toCurrency == from.GetCurrencyCode() {
+		return from, nil // return as-is in USD
+	}
+	result, err := pb.NewCurrencyServiceClient(cs.currencySvcConn).
+		Convert(ctx, &pb.CurrencyConversionRequest{From: from, ToCode: toCurrency})
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert currency: %+v", err)
 	}
-	return result, err
+	return result, nil
 }
 
 func (cs *checkoutService) chargeCard(ctx context.Context, amount *pb.Money, paymentInfo *pb.CreditCardInfo) (string, error) {
-	paymentResp, err := pb.NewPaymentServiceClient(cs.paymentSvcConn).Charge(ctx, &pb.ChargeRequest{
-		Amount:     amount,
-		CreditCard: paymentInfo})
+	if cs.paymentSvcConn == nil {
+		// simulate successful charge with a fake transaction ID
+		return fmt.Sprintf("stub-txn-%d", time.Now().UnixNano()), nil
+	}
+	paymentResp, err := pb.NewPaymentServiceClient(cs.paymentSvcConn).
+		Charge(ctx, &pb.ChargeRequest{Amount: amount, CreditCard: paymentInfo})
 	if err != nil {
-		return "", fmt.Errorf("could not charge the card: %+v", err)
+		return "", fmt.Errorf("could not charge card: %+v", err)
 	}
 	return paymentResp.GetTransactionId(), nil
 }
 
 func (cs *checkoutService) sendOrderConfirmation(ctx context.Context, email string, order *pb.OrderResult) error {
-	_, err := pb.NewEmailServiceClient(cs.emailSvcConn).SendOrderConfirmation(ctx, &pb.SendOrderConfirmationRequest{
-		Email: email,
-		Order: order})
+	if cs.emailSvcConn == nil {
+		log.Infof("stub: skipping order confirmation email to %q", email)
+		return nil
+	}
+	_, err := pb.NewEmailServiceClient(cs.emailSvcConn).
+		SendOrderConfirmation(ctx, &pb.SendOrderConfirmationRequest{Email: email, Order: order})
 	return err
 }
 
 func (cs *checkoutService) shipOrder(ctx context.Context, address *pb.Address, items []*pb.CartItem) (string, error) {
-	resp, err := pb.NewShippingServiceClient(cs.shippingSvcConn).ShipOrder(ctx, &pb.ShipOrderRequest{
-		Address: address,
-		Items:   items})
+	if cs.shippingSvcConn == nil {
+		return fmt.Sprintf("stub-tracking-%d", time.Now().UnixNano()), nil
+	}
+	resp, err := pb.NewShippingServiceClient(cs.shippingSvcConn).
+		ShipOrder(ctx, &pb.ShipOrderRequest{Address: address, Items: items})
 	if err != nil {
 		return "", fmt.Errorf("shipment failed: %+v", err)
 	}

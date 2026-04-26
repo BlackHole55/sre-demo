@@ -1,17 +1,14 @@
-# Copyright 2022 Google LLC
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#      http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# ================================================================
+# terraform.tfvars — copy this file and fill in your values
+# DO NOT commit this file to git if it contains sensitive values
+# ================================================================
 
-gcp_project_id = "<project_id_here>"
+aws_region       = "eu-north-1"
+project_name     = "boutique"
+instance_type    = "t3.medium"
+public_key_path  = "~/.ssh/id_rsa.pub"
 
-memorystore = false
+# Restrict SSH to your own IP for security
+# Find your IP at: https://checkip.amazonaws.com
+# Then set: allowed_ssh_cidr = "YOUR_IP/32"
+allowed_ssh_cidr = "178.91.100.200/32"

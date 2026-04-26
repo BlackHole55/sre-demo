@@ -16,11 +16,8 @@ package main
 
 import (
 	"context"
-	"time"
 
 	pb "github.com/GoogleCloudPlatform/microservices-demo/src/frontend/genproto"
-
-	"github.com/pkg/errors"
 )
 
 const (
@@ -28,18 +25,15 @@ const (
 )
 
 func (fe *frontendServer) getCurrencies(ctx context.Context) ([]string, error) {
+	if fe.currencySvcConn == nil {
+		return []string{"USD", "EUR", "GBP", "JPY", "CAD", "TRY"}, nil
+	}
 	currs, err := pb.NewCurrencyServiceClient(fe.currencySvcConn).
 		GetSupportedCurrencies(ctx, &pb.Empty{})
 	if err != nil {
 		return nil, err
 	}
-	var out []string
-	for _, c := range currs.CurrencyCodes {
-		if _, ok := whitelistedCurrencies[c]; ok {
-			out = append(out, c)
-		}
-	}
-	return out, nil
+	return currs.CurrencyCodes, nil
 }
 
 func (fe *frontendServer) getProducts(ctx context.Context) ([]*pb.Product, error) {
@@ -55,73 +49,97 @@ func (fe *frontendServer) getProduct(ctx context.Context, id string) (*pb.Produc
 }
 
 func (fe *frontendServer) getCart(ctx context.Context, userID string) ([]*pb.CartItem, error) {
-	resp, err := pb.NewCartServiceClient(fe.cartSvcConn).GetCart(ctx, &pb.GetCartRequest{UserId: userID})
-	return resp.GetItems(), err
+	if fe.cartSvcConn == nil {
+		return []*pb.CartItem{}, nil
+	}
+	cart, err := pb.NewCartServiceClient(fe.cartSvcConn).
+		GetCart(ctx, &pb.GetCartRequest{UserId: userID})
+	if err != nil {
+		return nil, err
+	}
+	return cart.GetItems(), nil
 }
 
 func (fe *frontendServer) emptyCart(ctx context.Context, userID string) error {
-	_, err := pb.NewCartServiceClient(fe.cartSvcConn).EmptyCart(ctx, &pb.EmptyCartRequest{UserId: userID})
+	if fe.cartSvcConn == nil {
+		return nil
+	}
+	_, err := pb.NewCartServiceClient(fe.cartSvcConn).
+		EmptyCart(ctx, &pb.EmptyCartRequest{UserId: userID})
 	return err
 }
 
 func (fe *frontendServer) insertCart(ctx context.Context, userID, productID string, quantity int32) error {
-	_, err := pb.NewCartServiceClient(fe.cartSvcConn).AddItem(ctx, &pb.AddItemRequest{
-		UserId: userID,
-		Item: &pb.CartItem{
-			ProductId: productID,
-			Quantity:  quantity},
-	})
+	if fe.cartSvcConn == nil {
+		return nil // silently drop — no cart service
+	}
+	_, err := pb.NewCartServiceClient(fe.cartSvcConn).
+		AddItem(ctx, &pb.AddItemRequest{
+			UserId: userID,
+			Item:   &pb.CartItem{ProductId: productID, Quantity: quantity},
+		})
 	return err
 }
 
 func (fe *frontendServer) convertCurrency(ctx context.Context, money *pb.Money, currency string) (*pb.Money, error) {
-	if avoidNoopCurrencyConversionRPC && money.GetCurrencyCode() == currency {
+	if fe.currencySvcConn == nil || currency == "" || currency == money.GetCurrencyCode() {
+		// return original price unchanged
 		return money, nil
 	}
 	return pb.NewCurrencyServiceClient(fe.currencySvcConn).
 		Convert(ctx, &pb.CurrencyConversionRequest{
 			From:   money,
-			ToCode: currency})
+			ToCode: currency,
+		})
 }
 
 func (fe *frontendServer) getShippingQuote(ctx context.Context, items []*pb.CartItem, currency string) (*pb.Money, error) {
-	quote, err := pb.NewShippingServiceClient(fe.shippingSvcConn).GetQuote(ctx,
-		&pb.GetQuoteRequest{
-			Address: nil,
-			Items:   items})
+	if fe.shippingSvcConn == nil {
+		return &pb.Money{CurrencyCode: currency, Units: 0, Nanos: 0}, nil
+	}
+	quote, err := pb.NewShippingServiceClient(fe.shippingSvcConn).
+		GetQuote(ctx, &pb.GetQuoteRequest{Items: items})
 	if err != nil {
 		return nil, err
 	}
 	localized, err := fe.convertCurrency(ctx, quote.GetCostUsd(), currency)
-	return localized, errors.Wrap(err, "failed to convert currency for shipping cost")
+	if err != nil {
+		return nil, err
+	}
+	return localized, nil
 }
 
 func (fe *frontendServer) getRecommendations(ctx context.Context, userID string, productIDs []string) ([]*pb.Product, error) {
-	resp, err := pb.NewRecommendationServiceClient(fe.recommendationSvcConn).ListRecommendations(ctx,
-		&pb.ListRecommendationsRequest{UserId: userID, ProductIds: productIDs})
+	if fe.recommendationSvcConn == nil {
+		return []*pb.Product{}, nil
+	}
+	resp, err := pb.NewRecommendationServiceClient(fe.recommendationSvcConn).
+		ListRecommendations(ctx, &pb.ListRecommendationsRequest{
+			UserId:     userID,
+			ProductIds: productIDs,
+		})
 	if err != nil {
 		return nil, err
 	}
 	out := make([]*pb.Product, len(resp.GetProductIds()))
-	for i, v := range resp.GetProductIds() {
-		p, err := fe.getProduct(ctx, v)
+	for i, id := range resp.GetProductIds() {
+		p, err := fe.getProduct(ctx, id)
 		if err != nil {
-			return nil, errors.Wrapf(err, "failed to get recommended product info (#%s)", v)
+			return nil, err
 		}
 		out[i] = p
 	}
-	if len(out) > 4 {
-		out = out[:4] // take only first four to fit the UI
-	}
-	return out, err
+	return out, nil
 }
 
 func (fe *frontendServer) getAd(ctx context.Context, ctxKeys []string) ([]*pb.Ad, error) {
-	ctx, cancel := context.WithTimeout(ctx, time.Millisecond*100)
-	defer cancel()
-
-	resp, err := pb.NewAdServiceClient(fe.adSvcConn).GetAds(ctx, &pb.AdRequest{
-		ContextKeys: ctxKeys,
-	})
-	return resp.GetAds(), errors.Wrap(err, "failed to get ads")
+	if fe.adSvcConn == nil {
+		return []*pb.Ad{}, nil
+	}
+	resp, err := pb.NewAdServiceClient(fe.adSvcConn).GetAds(ctx,
+		&pb.AdRequest{ContextKeys: ctxKeys})
+	if err != nil {
+		return nil, err
+	}
+	return resp.GetAds(), nil
 }

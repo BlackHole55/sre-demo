@@ -232,7 +232,7 @@ func (fe *frontendServer) addToCartHandler(w http.ResponseWriter, r *http.Reques
 		renderHTTPError(log, r, w, errors.Wrap(err, "failed to add to cart"), http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("location", baseUrl + "/cart")
+	w.Header().Set("location", baseUrl+"/cart")
 	w.WriteHeader(http.StatusFound)
 }
 
@@ -244,7 +244,7 @@ func (fe *frontendServer) emptyCartHandler(w http.ResponseWriter, r *http.Reques
 		renderHTTPError(log, r, w, errors.Wrap(err, "failed to empty cart"), http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("location", baseUrl + "/")
+	w.Header().Set("location", baseUrl+"/")
 	w.WriteHeader(http.StatusFound)
 }
 
@@ -415,18 +415,6 @@ func (fe *frontendServer) assistantHandler(w http.ResponseWriter, r *http.Reques
 	}
 }
 
-func (fe *frontendServer) logoutHandler(w http.ResponseWriter, r *http.Request) {
-	log := r.Context().Value(ctxKeyLog{}).(logrus.FieldLogger)
-	log.Debug("logging out")
-	for _, c := range r.Cookies() {
-		c.Expires = time.Now().Add(-time.Hour * 24 * 365)
-		c.MaxAge = -1
-		http.SetCookie(w, c)
-	}
-	w.Header().Set("Location", baseUrl + "/")
-	w.WriteHeader(http.StatusFound)
-}
-
 func (fe *frontendServer) getProductByID(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["ids"]
 	if id == "" {
@@ -530,6 +518,9 @@ func (fe *frontendServer) chooseAd(ctx context.Context, ctxKeys []string, log lo
 		log.WithField("error", err).Warn("failed to retrieve ads")
 		return nil
 	}
+	if len(ads) == 0 {
+		return nil
+	}
 	return ads[rand.Intn(len(ads))]
 }
 
@@ -561,6 +552,8 @@ func injectCommonTemplateData(r *http.Request, payload map[string]interface{}) m
 		"frontendMessage":   frontendMessage,
 		"currentYear":       time.Now().Year(),
 		"baseUrl":           baseUrl,
+		"is_logged_in":      isLoggedIn(r),
+		"auth_token":        authToken(r),
 	}
 
 	for k, v := range payload {
@@ -632,4 +625,112 @@ func stringinSlice(slice []string, val string) bool {
 		}
 	}
 	return false
+}
+
+const cookieAuthToken = cookiePrefix + "auth-token"
+
+func (fe *frontendServer) loginHandler(w http.ResponseWriter, r *http.Request) {
+	log := r.Context().Value(ctxKeyLog{}).(logrus.FieldLogger)
+
+	if r.Method == http.MethodGet {
+		if err := templates.ExecuteTemplate(w, "login", injectCommonTemplateData(r, map[string]interface{}{
+			"show_currency": false,
+			"currencies":    []string{},
+		})); err != nil {
+			log.Error(err)
+		}
+		return
+	}
+
+	// POST — attempt login
+	email := r.FormValue("email")
+	password := r.FormValue("password")
+
+	if fe.authSvcConn == nil {
+		// auth service not running — accept any credentials for local dev
+		http.SetCookie(w, &http.Cookie{
+			Name:   cookieAuthToken,
+			Value:  "stub-token",
+			MaxAge: cookieMaxAge,
+		})
+		w.Header().Set("Location", baseUrl+"/")
+		w.WriteHeader(http.StatusFound)
+		return
+	}
+
+	resp, err := NewAuthServiceClient(fe.authSvcConn).
+		Login(r.Context(), &LoginRequest{Email: email, Password: password})
+	if err != nil {
+		renderHTTPError(log, r, w, errors.Wrap(err, "login failed"), http.StatusUnauthorized)
+		return
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:   cookieAuthToken,
+		Value:  resp.GetToken(),
+		MaxAge: cookieMaxAge,
+	})
+	w.Header().Set("Location", baseUrl+"/")
+	w.WriteHeader(http.StatusFound)
+}
+
+func (fe *frontendServer) registerHandler(w http.ResponseWriter, r *http.Request) {
+	log := r.Context().Value(ctxKeyLog{}).(logrus.FieldLogger)
+
+	if r.Method == http.MethodGet {
+		if err := templates.ExecuteTemplate(w, "register", injectCommonTemplateData(r, map[string]interface{}{
+			"show_currency": false,
+			"currencies":    []string{},
+		})); err != nil {
+			log.Error(err)
+		}
+		return
+	}
+
+	// POST — create account
+	email := r.FormValue("email")
+	password := r.FormValue("password")
+
+	if fe.authSvcConn == nil {
+		// stub — skip registration in local dev without auth service
+		w.Header().Set("Location", baseUrl+"/login")
+		w.WriteHeader(http.StatusFound)
+		return
+	}
+
+	_, err := NewAuthServiceClient(fe.authSvcConn).
+		Register(r.Context(), &RegisterRequest{Email: email, Password: password})
+	if err != nil {
+		renderHTTPError(log, r, w, errors.Wrap(err, "registration failed"), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Location", baseUrl+"/login")
+	w.WriteHeader(http.StatusFound)
+}
+
+// helper — returns current auth token from cookie (empty string if not logged in)
+func authToken(r *http.Request) string {
+	c, _ := r.Cookie(cookieAuthToken)
+	if c != nil {
+		return c.Value
+	}
+	return ""
+}
+
+// helper — returns true if the request has a valid-looking auth token
+func isLoggedIn(r *http.Request) bool {
+	return authToken(r) != ""
+}
+
+func (fe *frontendServer) logoutHandler(w http.ResponseWriter, r *http.Request) {
+	log := r.Context().Value(ctxKeyLog{}).(logrus.FieldLogger)
+	log.Debug("logging out")
+	for _, c := range r.Cookies() {
+		c.Expires = time.Now().Add(-time.Hour * 24 * 365)
+		c.MaxAge = -1
+		http.SetCookie(w, c)
+	}
+	w.Header().Set("Location", baseUrl+"/")
+	w.WriteHeader(http.StatusFound)
 }

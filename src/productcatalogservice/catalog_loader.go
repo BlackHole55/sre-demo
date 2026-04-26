@@ -38,6 +38,10 @@ func loadCatalog(catalog *pb.ListProductsResponse) error {
 		return loadCatalogFromAlloyDB(catalog)
 	}
 
+	if os.Getenv("POSTGRES_DSN") != "" {
+		return loadCatalogFromPostgres(catalog)
+	}
+
 	return loadCatalogFromLocalFile(catalog)
 }
 
@@ -157,5 +161,69 @@ func loadCatalogFromAlloyDB(catalog *pb.ListProductsResponse) error {
 	}
 
 	log.Info("successfully parsed product catalog from AlloyDB")
+	return nil
+}
+
+func loadCatalogFromPostgres(catalog *pb.ListProductsResponse) error {
+	log.Info("loading catalog from PostgreSQL...")
+
+	dsn := os.Getenv("POSTGRES_DSN")
+
+	pool, err := pgxpool.New(context.Background(), dsn)
+	if err != nil {
+		log.Warnf("failed to create pgxpool: %v", err)
+		return err
+	}
+	defer pool.Close()
+
+	// Verify the connection before querying
+	if err := pool.Ping(context.Background()); err != nil {
+		log.Warnf("failed to ping postgres: %v", err)
+		return err
+	}
+
+	rows, err := pool.Query(context.Background(), `
+		SELECT id, name, description, picture,
+			price_usd_currency_code, price_usd_units, price_usd_nanos,
+			categories
+		FROM products.catalog
+		ORDER BY id
+	`)
+	if err != nil {
+		log.Warnf("failed to query products: %v", err)
+		return err
+	}
+	defer rows.Close()
+
+	catalog.Products = catalog.Products[:0]
+	for rows.Next() {
+		product := &pb.Product{PriceUsd: &pb.Money{}}
+
+		var categories string
+		if err := rows.Scan(
+			&product.Id,
+			&product.Name,
+			&product.Description,
+			&product.Picture,
+			&product.PriceUsd.CurrencyCode,
+			&product.PriceUsd.Units,
+			&product.PriceUsd.Nanos,
+			&categories,
+		); err != nil {
+			log.Warnf("failed to scan row: %v", err)
+			return err
+		}
+
+		categories = strings.ToLower(categories)
+		product.Categories = strings.Split(categories, ",")
+		catalog.Products = append(catalog.Products, product)
+	}
+
+	if err := rows.Err(); err != nil {
+		log.Warnf("row iteration error: %v", err)
+		return err
+	}
+
+	log.Infof("successfully loaded %d products from PostgreSQL", len(catalog.Products))
 	return nil
 }

@@ -82,6 +82,9 @@ type frontendServer struct {
 	adSvcAddr string
 	adSvcConn *grpc.ClientConn
 
+	authSvcAddr string
+	authSvcConn *grpc.ClientConn
+
 	collectorAddr string
 	collectorConn *grpc.ClientConn
 
@@ -129,22 +132,41 @@ func main() {
 		srvPort = os.Getenv("PORT")
 	}
 	addr := os.Getenv("LISTEN_ADDR")
-	mustMapEnv(&svc.productCatalogSvcAddr, "PRODUCT_CATALOG_SERVICE_ADDR")
-	mustMapEnv(&svc.currencySvcAddr, "CURRENCY_SERVICE_ADDR")
-	mustMapEnv(&svc.cartSvcAddr, "CART_SERVICE_ADDR")
-	mustMapEnv(&svc.recommendationSvcAddr, "RECOMMENDATION_SERVICE_ADDR")
-	mustMapEnv(&svc.checkoutSvcAddr, "CHECKOUT_SERVICE_ADDR")
-	mustMapEnv(&svc.shippingSvcAddr, "SHIPPING_SERVICE_ADDR")
-	mustMapEnv(&svc.adSvcAddr, "AD_SERVICE_ADDR")
-	mustMapEnv(&svc.shoppingAssistantSvcAddr, "SHOPPING_ASSISTANT_SERVICE_ADDR")
 
-	mustConnGRPC(ctx, &svc.currencySvcConn, svc.currencySvcAddr)
+	mapEnv(&svc.productCatalogSvcAddr, "PRODUCT_CATALOG_SERVICE_ADDR")
+	mapEnv(&svc.currencySvcAddr, "CURRENCY_SERVICE_ADDR")
+	mapEnv(&svc.cartSvcAddr, "CART_SERVICE_ADDR")
+	mapEnv(&svc.recommendationSvcAddr, "RECOMMENDATION_SERVICE_ADDR")
+	mapEnv(&svc.checkoutSvcAddr, "CHECKOUT_SERVICE_ADDR")
+	mapEnv(&svc.shippingSvcAddr, "SHIPPING_SERVICE_ADDR")
+	mapEnv(&svc.adSvcAddr, "AD_SERVICE_ADDR")
+	mapEnv(&svc.shoppingAssistantSvcAddr, "SHOPPING_ASSISTANT_SERVICE_ADDR")
+	mapEnv(&svc.authSvcAddr, "AUTH_SERVICE_ADDR")
+
 	mustConnGRPC(ctx, &svc.productCatalogSvcConn, svc.productCatalogSvcAddr)
-	mustConnGRPC(ctx, &svc.cartSvcConn, svc.cartSvcAddr)
-	mustConnGRPC(ctx, &svc.recommendationSvcConn, svc.recommendationSvcAddr)
-	mustConnGRPC(ctx, &svc.shippingSvcConn, svc.shippingSvcAddr)
 	mustConnGRPC(ctx, &svc.checkoutSvcConn, svc.checkoutSvcAddr)
-	mustConnGRPC(ctx, &svc.adSvcConn, svc.adSvcAddr)
+
+	if svc.currencySvcAddr != "" {
+		mustConnGRPC(ctx, &svc.currencySvcConn, svc.currencySvcAddr)
+	}
+	if svc.cartSvcAddr != "" {
+		mustConnGRPC(ctx, &svc.cartSvcConn, svc.cartSvcAddr)
+	}
+	if svc.recommendationSvcAddr != "" {
+		mustConnGRPC(ctx, &svc.recommendationSvcConn, svc.recommendationSvcAddr)
+	}
+	if svc.shippingSvcAddr != "" {
+		mustConnGRPC(ctx, &svc.shippingSvcConn, svc.shippingSvcAddr)
+	}
+	if svc.adSvcAddr != "" {
+		mustConnGRPC(ctx, &svc.adSvcConn, svc.adSvcAddr)
+	}
+	if svc.shoppingAssistantSvcAddr != "" {
+		// HTTP client, not gRPC — no mustConnGRPC needed here
+	}
+	if svc.authSvcAddr != "" {
+		mustConnGRPC(ctx, &svc.authSvcConn, svc.authSvcAddr)
+	}
 
 	r := mux.NewRouter()
 	r.HandleFunc(baseUrl+"/", svc.homeHandler).Methods(http.MethodGet, http.MethodHead)
@@ -153,6 +175,8 @@ func main() {
 	r.HandleFunc(baseUrl+"/cart", svc.addToCartHandler).Methods(http.MethodPost)
 	r.HandleFunc(baseUrl+"/cart/empty", svc.emptyCartHandler).Methods(http.MethodPost)
 	r.HandleFunc(baseUrl+"/setCurrency", svc.setCurrencyHandler).Methods(http.MethodPost)
+	r.HandleFunc(baseUrl+"/login", svc.loginHandler).Methods(http.MethodGet, http.MethodPost)
+	r.HandleFunc(baseUrl+"/register", svc.registerHandler).Methods(http.MethodGet, http.MethodPost)
 	r.HandleFunc(baseUrl+"/logout", svc.logoutHandler).Methods(http.MethodGet)
 	r.HandleFunc(baseUrl+"/cart/checkout", svc.placeOrderHandler).Methods(http.MethodPost)
 	r.HandleFunc(baseUrl+"/assistant", svc.assistantHandler).Methods(http.MethodGet)
@@ -162,9 +186,12 @@ func main() {
 	r.HandleFunc(baseUrl+"/product-meta/{ids}", svc.getProductByID).Methods(http.MethodGet)
 	r.HandleFunc(baseUrl+"/bot", svc.chatBotHandler).Methods(http.MethodPost)
 
+	startMetricsServer("9090")
+
 	var handler http.Handler = r
-	handler = &logHandler{log: log, next: handler}     // add logging
-	handler = ensureSessionID(handler)                 // add session ID
+	handler = &logHandler{log: log, next: handler} // add logging
+	handler = ensureSessionID(handler)             // add session ID
+	handler = metricsMiddleware(handler)
 	handler = otelhttp.NewHandler(handler, "frontend") // add OTel tracing
 
 	log.Infof("starting server on %s:%s", addr, srvPort)
@@ -175,7 +202,7 @@ func initStats(log logrus.FieldLogger) {
 }
 
 func initTracing(log logrus.FieldLogger, ctx context.Context, svc *frontendServer) (*sdktrace.TracerProvider, error) {
-	mustMapEnv(&svc.collectorAddr, "COLLECTOR_SERVICE_ADDR")
+	mapEnv(&svc.collectorAddr, "COLLECTOR_SERVICE_ADDR")
 	mustConnGRPC(ctx, &svc.collectorConn, svc.collectorAddr)
 	exporter, err := otlptracegrpc.New(
 		ctx,
@@ -214,15 +241,17 @@ func initProfiling(log logrus.FieldLogger, service, version string) {
 	log.Warn("warning: could not initialize Stackdriver profiler after retrying, giving up")
 }
 
-func mustMapEnv(target *string, envKey string) {
-	v := os.Getenv(envKey)
-	if v == "" {
-		panic(fmt.Sprintf("environment variable %q not set", envKey))
+func mapEnv(target *string, envKey string) {
+	*target = os.Getenv(envKey)
+	if *target == "" {
+		log.Warnf("optional service %q not configured, skipping", envKey)
 	}
-	*target = v
 }
 
 func mustConnGRPC(ctx context.Context, conn **grpc.ClientConn, addr string) {
+	if addr == "" {
+		return // leave conn as nil, handled by each caller's nil check
+	}
 	var err error
 	_, cancel := context.WithTimeout(ctx, time.Second*3)
 	defer cancel()

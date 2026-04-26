@@ -117,6 +117,7 @@ func main() {
 	}
 	log.Infof("starting grpc server at :%s", port)
 	run(port)
+	startMetricsServer("9090")
 	select {}
 }
 

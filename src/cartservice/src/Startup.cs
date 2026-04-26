@@ -10,6 +10,7 @@ using Microsoft.Extensions.Hosting;
 using cartservice.cartstore;
 using cartservice.services;
 using Microsoft.Extensions.Caching.StackExchangeRedis;
+using Prometheus;
 
 namespace cartservice
 {
@@ -25,21 +26,26 @@ namespace cartservice
         // This method gets called by the runtime. Use this method to add services to the container.
         // For more information on how to configure your application, visit https://go.microsoft.com/fwlink/?LinkID=398940
         public void ConfigureServices(IServiceCollection services)
-        {
-            string redisAddress = Configuration["REDIS_ADDR"];
-            string spannerProjectId = Configuration["SPANNER_PROJECT"];
-            string spannerConnectionString = Configuration["SPANNER_CONNECTION_STRING"];
-            string alloyDBConnectionString = Configuration["ALLOYDB_PRIMARY_IP"];
+        {   
+            string redisAddress = Configuration["REDIS_ADDR"] 
+                                ?? Environment.GetEnvironmentVariable("REDIS_ADDR");
+
+            string spannerProjectId = Configuration["SPANNER_PROJECT"]
+                                    ?? Environment.GetEnvironmentVariable("SPANNER_PROJECT");
+
+            string alloyDBConnectionString = Configuration["ALLOYDB_PRIMARY_IP"]
+                                            ?? Environment.GetEnvironmentVariable("ALLOYDB_PRIMARY_IP");
 
             if (!string.IsNullOrEmpty(redisAddress))
             {
+                Console.WriteLine($"Connecting to Redis at {redisAddress}");
                 services.AddStackExchangeRedisCache(options =>
                 {
                     options.Configuration = redisAddress;
                 });
                 services.AddSingleton<ICartStore, RedisCartStore>();
             }
-            else if (!string.IsNullOrEmpty(spannerProjectId) || !string.IsNullOrEmpty(spannerConnectionString))
+            else if (!string.IsNullOrEmpty(spannerProjectId))
             {
                 services.AddSingleton<ICartStore, SpannerCartStore>();
             }
@@ -50,12 +56,10 @@ namespace cartservice
             }
             else
             {
-                Console.WriteLine("Redis cache host(hostname+port) was not specified. Starting a cart service using in memory store");
+                Console.WriteLine("REDIS_ADDR not found. Using in-memory store.");
                 services.AddDistributedMemoryCache();
                 services.AddSingleton<ICartStore, RedisCartStore>();
             }
-
-
             services.AddGrpc();
         }
 
@@ -68,11 +72,13 @@ namespace cartservice
             }
 
             app.UseRouting();
+            app.UseHttpMetrics();
 
             app.UseEndpoints(endpoints =>
             {
                 endpoints.MapGrpcService<CartService>();
                 endpoints.MapGrpcService<cartservice.services.HealthCheckService>();
+                endpoints.MapMetrics("/metrics");
 
                 endpoints.MapGet("/", async context =>
                 {

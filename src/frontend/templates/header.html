@@ -94,6 +94,13 @@
                         <span class="cart-size-circle">{{$.cart_size}}</span>
                         {{ end }}
                     </a>
+
+                    {{if .is_logged_in}}
+                        <a class="nav-link" href="/logout">Sign out</a>
+                    {{else}}
+                        <a class="nav-link" href="/login">Sign in</a>
+                        <a class="nav-link" href="/register">Register</a>
+                    {{end}}
                 </div>
             </div>
         </div>

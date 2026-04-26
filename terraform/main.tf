@@ -1,100 +1,203 @@
-# Copyright 2022 Google LLC
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#      http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# ================================================================
+# main.tf — Online Boutique infrastructure on AWS (eu-north-1)
+# ================================================================
 
-# Definition of local variables
-locals {
-  base_apis = [
-    "container.googleapis.com",
-    "monitoring.googleapis.com",
-    "cloudtrace.googleapis.com",
-    "cloudprofiler.googleapis.com"
-  ]
-  memorystore_apis = ["redis.googleapis.com"]
-  cluster_name     = google_container_cluster.my_cluster.name
+terraform {
+  required_version = ">= 1.6.0"
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
 }
 
-# Enable Google Cloud APIs
-module "enable_google_apis" {
-  source  = "terraform-google-modules/project-factory/google//modules/project_services"
-  version = "~> 18.0"
-
-  project_id                  = var.gcp_project_id
-  disable_services_on_destroy = false
-
-  # activate_apis is the set of base_apis and the APIs required by user-configured deployment options
-  activate_apis = concat(local.base_apis, var.memorystore ? local.memorystore_apis : [])
+provider "aws" {
+  region = var.aws_region
 }
 
-# Create GKE cluster
-resource "google_container_cluster" "my_cluster" {
+# ----------------------------------------------------------------
+# VPC — isolated network for all boutique resources
+# ----------------------------------------------------------------
+resource "aws_vpc" "boutique" {
+  cidr_block           = "10.0.0.0/16"
+  enable_dns_hostnames = true
+  enable_dns_support   = true
 
-  name     = var.name
-  location = var.region
+  tags = {
+    Name    = "${var.project_name}-vpc"
+    Project = var.project_name
+  }
+}
 
-  # Enable autopilot for this cluster
-  enable_autopilot = true
+# ----------------------------------------------------------------
+# Internet Gateway — gives the VPC a route to the internet
+# ----------------------------------------------------------------
+resource "aws_internet_gateway" "boutique" {
+  vpc_id = aws_vpc.boutique.id
 
-  # Set an empty ip_allocation_policy to allow autopilot cluster to spin up correctly
-  ip_allocation_policy {
+  tags = {
+    Name    = "${var.project_name}-igw"
+    Project = var.project_name
+  }
+}
+
+# ----------------------------------------------------------------
+# Public Subnet — where the EC2 instance will live
+# ----------------------------------------------------------------
+resource "aws_subnet" "public" {
+  vpc_id                  = aws_vpc.boutique.id
+  cidr_block              = "10.0.1.0/24"
+  availability_zone       = "${var.aws_region}a"
+  map_public_ip_on_launch = true
+
+  tags = {
+    Name    = "${var.project_name}-public-subnet"
+    Project = var.project_name
+  }
+}
+
+# ----------------------------------------------------------------
+# Route Table — sends all outbound traffic through the IGW
+# ----------------------------------------------------------------
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.boutique.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.boutique.id
   }
 
-  # Avoid setting deletion_protection to false
-  # until you're ready (and certain you want) to destroy the cluster.
-  # deletion_protection = false
-
-  depends_on = [
-    module.enable_google_apis
-  ]
+  tags = {
+    Name    = "${var.project_name}-public-rt"
+    Project = var.project_name
+  }
 }
 
-# Get credentials for cluster
-module "gcloud" {
-  source  = "terraform-google-modules/gcloud/google"
-  version = "~> 4.0"
-
-  platform              = "linux"
-  additional_components = ["kubectl", "beta"]
-
-  create_cmd_entrypoint = "gcloud"
-  # Module does not support explicit dependency
-  # Enforce implicit dependency through use of local variable
-  create_cmd_body = "container clusters get-credentials ${local.cluster_name} --zone=${var.region} --project=${var.gcp_project_id}"
+resource "aws_route_table_association" "public" {
+  subnet_id      = aws_subnet.public.id
+  route_table_id = aws_route_table.public.id
 }
 
-# Apply YAML kubernetes-manifest configurations
-resource "null_resource" "apply_deployment" {
-  provisioner "local-exec" {
-    interpreter = ["bash", "-exc"]
-    command     = "kubectl apply -k ${var.filepath_manifest} -n ${var.namespace}"
+# ----------------------------------------------------------------
+# Security Group — firewall rules for the EC2 instance
+# ----------------------------------------------------------------
+resource "aws_security_group" "boutique" {
+  name        = "${var.project_name}-sg"
+  description = "Allow HTTP, Grafana, Prometheus, and SSH"
+  vpc_id      = aws_vpc.boutique.id
+
+  # SSH — port 22
+  ingress {
+    description = "SSH"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = [var.allowed_ssh_cidr]
   }
 
-  depends_on = [
-    module.gcloud
-  ]
-}
-
-# Wait condition for all Pods to be ready before finishing
-resource "null_resource" "wait_conditions" {
-  provisioner "local-exec" {
-    interpreter = ["bash", "-exc"]
-    command     = <<-EOT
-    kubectl wait --for=condition=AVAILABLE apiservice/v1beta1.metrics.k8s.io --timeout=180s
-    kubectl wait --for=condition=ready pods --all -n ${var.namespace} --timeout=280s
-    EOT
+  # HTTP — port 80 (Nginx → frontend)
+  ingress {
+    description = "HTTP"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
-  depends_on = [
-    resource.null_resource.apply_deployment
-  ]
+  # Grafana — port 3000
+  ingress {
+    description = "Grafana"
+    from_port   = 3000
+    to_port     = 3000
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  # Prometheus — port 9090
+  ingress {
+    description = "Prometheus"
+    from_port   = 9090
+    to_port     = 9090
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  # All outbound traffic allowed
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name    = "${var.project_name}-sg"
+    Project = var.project_name
+  }
+}
+
+# ----------------------------------------------------------------
+# Key Pair — upload your local public key for SSH access
+# ----------------------------------------------------------------
+resource "aws_key_pair" "boutique" {
+  key_name   = "${var.project_name}-key"
+  public_key = file(var.public_key_path)
+
+  tags = {
+    Project = var.project_name
+  }
+}
+
+# ----------------------------------------------------------------
+# EC2 Instance
+# ----------------------------------------------------------------
+data "aws_ami" "ubuntu" {
+  most_recent = true
+  owners      = ["099720109477"] # Canonical (Ubuntu)
+
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+}
+
+resource "aws_instance" "boutique" {
+  ami                         = data.aws_ami.ubuntu.id
+  instance_type               = var.instance_type
+  subnet_id                   = aws_subnet.public.id
+  vpc_security_group_ids      = [aws_security_group.boutique.id]
+  key_name                    = aws_key_pair.boutique.key_name
+  associate_public_ip_address = true
+
+  root_block_device {
+    volume_size           = 30    # GB — enough for Docker images
+    volume_type           = "gp3"
+    delete_on_termination = true
+  }
+
+  tags = {
+    Name    = "${var.project_name}-server"
+    Project = var.project_name
+  }
+}
+
+# ----------------------------------------------------------------
+# Elastic IP — static public IP that survives instance restarts
+# ----------------------------------------------------------------
+resource "aws_eip" "boutique" {
+  instance = aws_instance.boutique.id
+  domain   = "vpc"
+
+  tags = {
+    Name    = "${var.project_name}-eip"
+    Project = var.project_name
+  }
+
+  depends_on = [aws_internet_gateway.boutique]
 }
