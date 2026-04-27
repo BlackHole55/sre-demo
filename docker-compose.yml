@@ -1,8 +1,5 @@
-version: "3.9"
-
 services:
 
-  # ── Gateway ────────────────────────────────────────────────────
   nginx:
     image: nginx:1.25-alpine
     ports:
@@ -14,7 +11,6 @@ services:
     networks:
       - boutique
 
-  # ── Frontend ───────────────────────────────────────────────────
   frontend:
     build:
       context: ./src/frontend
@@ -37,7 +33,6 @@ services:
     networks:
       - boutique
 
-  # ── Product Catalog ────────────────────────────────────────────
   productcatalogservice:
     build:
       context: ./src/productcatalogservice
@@ -51,7 +46,6 @@ services:
     networks:
       - boutique
 
-  # ── Order / Checkout ───────────────────────────────────────────
   checkoutservice:
     build:
       context: ./src/checkoutservice
@@ -60,7 +54,6 @@ services:
       - PORT=5050
       - PRODUCT_CATALOG_SERVICE_ADDR=productcatalogservice:3550
       - POSTGRES_DSN=postgres://boutique:boutique@postgres:5432/boutique?sslmode=disable&search_path=order
-      # stub out services checkoutservice normally calls
       - CART_SERVICE_ADDR=cartservice:7070
       - CURRENCY_SERVICE_ADDR=
       - PAYMENT_SERVICE_ADDR=
@@ -72,7 +65,6 @@ services:
     networks:
       - boutique
 
-  # ── Auth ────────────────────────────────
   authservice:
     build:
       context: ./src/authservice
@@ -86,7 +78,6 @@ services:
     networks:
       - boutique
 
-  # ── Cart ────────────────────────────────
   cartservice:
     build:
       context: ./src/cartservice/src/
@@ -104,7 +95,6 @@ services:
     networks:
       - boutique
 
-  # ── Database ───────────────────────────────────────────────────
   postgres:
     image: postgres:16-alpine
     environment:
@@ -125,7 +115,6 @@ services:
       - boutique
 
 
-    # ── Monitoring ─────────────────────────────────────────────────
   prometheus:
     image: prom/prometheus:v2.51.0
     volumes:
