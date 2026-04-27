@@ -1,7 +1,11 @@
 apiVersion: 1
+
 providers:
-  - name: boutique
-    folder: Boutique
+  - name: boutique-dashboards
+    folder: Online Boutique
     type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
     options:
       path: /etc/grafana/dashboards

@@ -1,0 +1,308 @@
+{
+  "__inputs": [],
+  "__requires": [],
+  "annotations": { "list": [] },
+  "description": "Four Golden Signals — Latency, Traffic, Errors, Saturation",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "title": "Traffic",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2, "fillOpacity": 10 },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "id": 1,
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total{job=\"frontend\"}[1m]))",
+          "legendFormat": "frontend",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(grpc_requests_total{job=\"productcatalogservice\"}[1m]))",
+          "legendFormat": "productcatalog",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(rate(grpc_requests_total{job=\"checkoutservice\"}[1m]))",
+          "legendFormat": "checkout",
+          "refId": "C"
+        },
+        {
+          "expr": "sum(rate(grpc_requests_total{job=\"authservice\"}[1m]))",
+          "legendFormat": "auth",
+          "refId": "D"
+        }
+      ],
+      "title": "Request Rate by Service",
+      "type": "timeseries"
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
+      "id": 101,
+      "title": "Latency",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2, "fillOpacity": 10 },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 10 },
+      "id": 3,
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket{job=\"frontend\"}[5m])) by (le))",
+          "legendFormat": "p50 frontend",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job=\"frontend\"}[5m])) by (le))",
+          "legendFormat": "p95 frontend",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{job=\"frontend\"}[5m])) by (le))",
+          "legendFormat": "p99 frontend",
+          "refId": "C"
+        }
+      ],
+      "title": "Frontend Latency Percentiles (p50 / p95 / p99)",
+      "type": "timeseries"
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 },
+      "id": 102,
+      "title": "Errors",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2, "fillOpacity": 20 },
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 19 },
+      "id": 5,
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total{job=\"frontend\", status=~\"Internal Server Error|Bad Gateway|Service Unavailable\"}[5m])) / sum(rate(http_requests_total{job=\"frontend\"}[5m]))",
+          "legendFormat": "frontend error %",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(grpc_requests_total{job=\"checkoutservice\", status!=\"OK\"}[5m])) / sum(rate(grpc_requests_total{job=\"checkoutservice\"}[5m]))",
+          "legendFormat": "checkout error %",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(rate(grpc_requests_total{job=\"productcatalogservice\", status!=\"OK\"}[5m])) / sum(rate(grpc_requests_total{job=\"productcatalogservice\"}[5m]))",
+          "legendFormat": "productcatalog error %",
+          "refId": "C"
+        },
+        {
+          "expr": "sum(rate(grpc_requests_total{job=\"authservice\", status!=\"OK\"}[5m])) / sum(rate(grpc_requests_total{job=\"authservice\"}[5m]))",
+          "legendFormat": "auth error %",
+          "refId": "D"
+        }
+      ],
+      "title": "Error Rate by Service",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.01 },
+              { "color": "red", "value": 0.05 }
+            ]
+          },
+          "unit": "percentunit",
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 19 },
+      "id": 6,
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background"
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total{job=\"frontend\", status=~\"Internal Server Error|Bad Gateway|Service Unavailable\"}[5m])) / sum(rate(http_requests_total{job=\"frontend\"}[5m]))",
+          "legendFormat": "Frontend",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(grpc_requests_total{job=\"checkoutservice\", status!=\"OK\"}[5m])) / sum(rate(grpc_requests_total{job=\"checkoutservice\"}[5m]))",
+          "legendFormat": "Checkout",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(rate(grpc_requests_total{job=\"authservice\", status!=\"OK\"}[5m])) / sum(rate(grpc_requests_total{job=\"authservice\"}[5m]))",
+          "legendFormat": "Auth",
+          "refId": "C"
+        }
+      ],
+      "title": "Current Error Rate (green < 1%, red > 5%)",
+      "type": "stat"
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 },
+      "id": 103,
+      "title": "Saturation",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2, "fillOpacity": 10 },
+          "unit": "bytes",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 28 },
+      "id": 7,
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "go_memstats_alloc_bytes{job=\"frontend\"}",
+          "legendFormat": "frontend heap",
+          "refId": "A"
+        },
+        {
+          "expr": "go_memstats_alloc_bytes{job=\"productcatalogservice\"}",
+          "legendFormat": "productcatalog heap",
+          "refId": "B"
+        },
+        {
+          "expr": "go_memstats_alloc_bytes{job=\"checkoutservice\"}",
+          "legendFormat": "checkout heap",
+          "refId": "C"
+        },
+        {
+          "expr": "go_memstats_alloc_bytes{job=\"authservice\"}",
+          "legendFormat": "auth heap",
+          "refId": "D"
+        },
+        {
+          "expr": "redis_memory_used_bytes{job=\"redis\"}",
+          "legendFormat": "redis memory",
+          "refId": "E"
+        }
+      ],
+      "title": "Memory Usage by Service",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2, "fillOpacity": 10 },
+          "unit": "short",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 28 },
+      "id": 8,
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "go_goroutines{job=\"frontend\"}",
+          "legendFormat": "frontend goroutines",
+          "refId": "A"
+        },
+        {
+          "expr": "go_goroutines{job=\"productcatalogservice\"}",
+          "legendFormat": "productcatalog goroutines",
+          "refId": "B"
+        },
+        {
+          "expr": "go_goroutines{job=\"checkoutservice\"}",
+          "legendFormat": "checkout goroutines",
+          "refId": "C"
+        },
+        {
+          "expr": "http_active_requests{job=\"frontend\"}",
+          "legendFormat": "frontend active requests",
+          "refId": "D"
+        }
+      ],
+      "title": "Goroutines + Active Requests",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 38,
+  "tags": ["boutique", "golden-signals", "sre"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Online Boutique — Golden Signals",
+  "uid": "boutique-golden-signals",
+  "version": 1
+}

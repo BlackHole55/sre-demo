@@ -14,6 +14,7 @@
 
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Hosting;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 using cartservice;
 
 CreateHostBuilder(args).Build().Run();
@@ -22,5 +23,13 @@ static IHostBuilder CreateHostBuilder(string[] args) =>
     Host.CreateDefaultBuilder(args)
         .ConfigureWebHostDefaults(webBuilder =>
         {
+            webBuilder.ConfigureKestrel(options =>
+            {
+                options.ListenAnyIP(7070, o =>
+                    o.Protocols = HttpProtocols.Http2);
+
+                options.ListenAnyIP(9091, o =>
+                    o.Protocols = HttpProtocols.Http1);
+            });
             webBuilder.UseStartup<Startup>();
         });

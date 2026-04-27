@@ -1,11 +1,7 @@
-# ================================================================
-# variables.tf
-# ================================================================
-
 variable "aws_region" {
   description = "AWS region to deploy into"
   type        = string
-  default     = "eu-north-1"   # Ireland
+  default     = "eu-west-1"
 }
 
 variable "project_name" {
@@ -17,7 +13,7 @@ variable "project_name" {
 variable "instance_type" {
   description = "EC2 instance type. t3.medium recommended for running all services"
   type        = string
-  default     = "t3.medium"   # 2 vCPU, 4GB RAM
+  default     = "t2.micro"   # 2 vCPU, 4GB RAM
 }
 
 variable "public_key_path" {

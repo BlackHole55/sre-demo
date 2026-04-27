@@ -78,7 +78,7 @@ namespace cartservice
             {
                 endpoints.MapGrpcService<CartService>();
                 endpoints.MapGrpcService<cartservice.services.HealthCheckService>();
-                endpoints.MapMetrics("/metrics");
+                endpoints.MapMetrics("/metrics").RequireHost("*:9091");;
 
                 endpoints.MapGet("/", async context =>
                 {

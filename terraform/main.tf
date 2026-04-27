@@ -1,7 +1,3 @@
-# ================================================================
-# main.tf — Online Boutique infrastructure on AWS (eu-north-1)
-# ================================================================
-
 terraform {
   required_version = ">= 1.6.0"
   required_providers {
@@ -16,9 +12,7 @@ provider "aws" {
   region = var.aws_region
 }
 
-# ----------------------------------------------------------------
-# VPC — isolated network for all boutique resources
-# ----------------------------------------------------------------
+# VPC
 resource "aws_vpc" "boutique" {
   cidr_block           = "10.0.0.0/16"
   enable_dns_hostnames = true
@@ -30,9 +24,7 @@ resource "aws_vpc" "boutique" {
   }
 }
 
-# ----------------------------------------------------------------
-# Internet Gateway — gives the VPC a route to the internet
-# ----------------------------------------------------------------
+# Internet Gateway
 resource "aws_internet_gateway" "boutique" {
   vpc_id = aws_vpc.boutique.id
 
@@ -42,9 +34,7 @@ resource "aws_internet_gateway" "boutique" {
   }
 }
 
-# ----------------------------------------------------------------
-# Public Subnet — where the EC2 instance will live
-# ----------------------------------------------------------------
+# Public Subnet
 resource "aws_subnet" "public" {
   vpc_id                  = aws_vpc.boutique.id
   cidr_block              = "10.0.1.0/24"
@@ -57,9 +47,7 @@ resource "aws_subnet" "public" {
   }
 }
 
-# ----------------------------------------------------------------
-# Route Table — sends all outbound traffic through the IGW
-# ----------------------------------------------------------------
+# Route Table
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.boutique.id
 
@@ -79,15 +67,12 @@ resource "aws_route_table_association" "public" {
   route_table_id = aws_route_table.public.id
 }
 
-# ----------------------------------------------------------------
-# Security Group — firewall rules for the EC2 instance
-# ----------------------------------------------------------------
+# Security Group
 resource "aws_security_group" "boutique" {
   name        = "${var.project_name}-sg"
-  description = "Allow HTTP, Grafana, Prometheus, and SSH"
+  description = "Allow HTTP, Grafana, Prometheus and SSH"
   vpc_id      = aws_vpc.boutique.id
 
-  # SSH — port 22
   ingress {
     description = "SSH"
     from_port   = 22
@@ -96,16 +81,14 @@ resource "aws_security_group" "boutique" {
     cidr_blocks = [var.allowed_ssh_cidr]
   }
 
-  # HTTP — port 80 (Nginx → frontend)
   ingress {
-    description = "HTTP"
+    description = "HTTP (Nginx)"
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # Grafana — port 3000
   ingress {
     description = "Grafana"
     from_port   = 3000
@@ -114,7 +97,6 @@ resource "aws_security_group" "boutique" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # Prometheus — port 9090
   ingress {
     description = "Prometheus"
     from_port   = 9090
@@ -123,7 +105,6 @@ resource "aws_security_group" "boutique" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # All outbound traffic allowed
   egress {
     from_port   = 0
     to_port     = 0
@@ -137,9 +118,7 @@ resource "aws_security_group" "boutique" {
   }
 }
 
-# ----------------------------------------------------------------
-# Key Pair — upload your local public key for SSH access
-# ----------------------------------------------------------------
+# Key Pair
 resource "aws_key_pair" "boutique" {
   key_name   = "${var.project_name}-key"
   public_key = file(var.public_key_path)
@@ -149,12 +128,10 @@ resource "aws_key_pair" "boutique" {
   }
 }
 
-# ----------------------------------------------------------------
-# EC2 Instance
-# ----------------------------------------------------------------
+# AMI
 data "aws_ami" "ubuntu" {
   most_recent = true
-  owners      = ["099720109477"] # Canonical (Ubuntu)
+  owners      = ["099720109477"] # Canonical
 
   filter {
     name   = "name"
@@ -167,6 +144,7 @@ data "aws_ami" "ubuntu" {
   }
 }
 
+# EC2 Instance
 resource "aws_instance" "boutique" {
   ami                         = data.aws_ami.ubuntu.id
   instance_type               = var.instance_type
@@ -175,8 +153,11 @@ resource "aws_instance" "boutique" {
   key_name                    = aws_key_pair.boutique.key_name
   associate_public_ip_address = true
 
+  user_data                   = file("${path.module}/scripts/startup.sh")
+  user_data_replace_on_change = true
+
   root_block_device {
-    volume_size           = 30    # GB — enough for Docker images
+    volume_size           = 40
     volume_type           = "gp3"
     delete_on_termination = true
   }
@@ -187,9 +168,7 @@ resource "aws_instance" "boutique" {
   }
 }
 
-# ----------------------------------------------------------------
-# Elastic IP — static public IP that survives instance restarts
-# ----------------------------------------------------------------
+# Elastic IP
 resource "aws_eip" "boutique" {
   instance = aws_instance.boutique.id
   domain   = "vpc"

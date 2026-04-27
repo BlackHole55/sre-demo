@@ -1,7 +1,3 @@
-# ================================================================
-# outputs.tf
-# ================================================================
-
 output "public_ip" {
   description = "Static public IP address of the boutique server"
   value       = aws_eip.boutique.public_ip
