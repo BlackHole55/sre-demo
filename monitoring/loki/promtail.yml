@@ -1,0 +1,113 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+  log_level: warn
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+
+  - job_name: docker-containers
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+        filters:
+          - name: label
+            values: ["com.docker.compose.project=microservices-demo"]
+
+    relabel_configs:
+
+      # ── use container name as the service label ────────────────
+      - source_labels: [__meta_docker_container_name]
+        regex: '/boutique-(.*)-1'
+        target_label: service
+        replacement: '$1'
+
+      # ── keep compose project label ─────────────────────────────
+      - source_labels: [__meta_docker_container_label_com_docker_compose_service]
+        target_label: compose_service
+
+      # ── container image label ──────────────────────────────────
+      - source_labels: [__meta_docker_container_label_com_docker_compose_project]
+        target_label: compose_project
+
+      - source_labels: [compose_project]
+        regex: "microservices-demo"
+        action: keep
+
+    pipeline_stages:
+
+      # ── Try to parse Go JSON logs ─────────────────────────────
+      - json:
+          expressions:
+            go_level:   severity
+            go_message: message
+
+      # ── Map Go severity to a normalised level label ───────────
+      - template:
+          source: go_level
+          template: '{{ ToLower .Value }}'
+
+      - labels:
+          go_level:
+
+      # ── Detect log severity from raw message ──────────────────
+      - match:
+          selector: '{service=~".+"}'
+          stages:
+            - regex:
+                expression: '(?i)(?P<detected_level>panic|fatal|critical|error|warn|warning|info|debug)'
+            - labels:
+                detected_level:
+
+      # ── Tag database connection failures ──────────────────────
+      - match:
+          selector: '{service=~".+"}'
+          stages:
+            - regex:
+                expression: '(?i)(?P<db_error>connection refused|could not connect|relation.*does not exist|SQLSTATE|pgx.*failed|failed to ping|password authentication failed|too many clients)'
+            - template:
+                source: db_error
+                template: '{{ if .Value }}db_connection_failure{{ end }}'
+            - labels:
+                alert_type:
+
+      # ── Tag service crashes ───────────────────────────────────
+      - match:
+          selector: '{service=~".+"}'
+          stages:
+            - regex:
+                expression: '(?i)(?P<crash>panic:|fatal error:|signal: killed|out of memory|runtime error|stack overflow)'
+            - template:
+                source: crash
+                template: '{{ if .Value }}service_crash{{ end }}'
+            - labels:
+                alert_type:
+
+      # ── Tag gRPC errors ───────────────────────────────────────
+      - match:
+          selector: '{service=~".+"}'
+          stages:
+            - regex:
+                expression: '(?i)(?P<grpc>rpc error|code = Unavailable|DeadlineExceeded|resolver error|missing address|invalid target)'
+            - template:
+                source: grpc
+                template: '{{ if .Value }}grpc_error{{ end }}'
+            - labels:
+                alert_type:
+
+      # ── Tag Redis errors ──────────────────────────────────────
+      - match:
+          selector: '{service="cartservice"}'
+          stages:
+            - regex:
+                expression: '(?i)(?P<redis>redis.*error|can.t access cart|dial tcp.*6379|redis.*refused)'
+            - template:
+                source: redis
+                template: '{{ if .Value }}redis_error{{ end }}'
+            - labels:
+                alert_type:

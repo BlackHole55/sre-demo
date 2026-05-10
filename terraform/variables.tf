@@ -27,3 +27,34 @@ variable "allowed_ssh_cidr" {
   type        = string
   default     = "0.0.0.0/0"   # change to your IP: e.g. "203.0.113.5/32"
 }
+
+variable "allowed_ingress_ports" {
+  description = "Ports to open for inbound traffic"
+  type = list(object({
+    description = string
+    port        = number
+    cidr_blocks = list(string)
+  }))
+  default = [
+    {
+      description = "SSH"
+      port        = 22
+      cidr_blocks = ["0.0.0.0/0"]   # overridden by allowed_ssh_cidr below
+    },
+    {
+      description = "HTTP (Nginx)"
+      port        = 80
+      cidr_blocks = ["0.0.0.0/0"]
+    },
+    {
+      description = "Grafana"
+      port        = 3000
+      cidr_blocks = ["0.0.0.0/0"]
+    },
+    {
+      description = "Prometheus"
+      port        = 9090
+      cidr_blocks = ["0.0.0.0/0"]
+    }
+  ]
+}

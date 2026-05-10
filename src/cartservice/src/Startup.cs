@@ -78,7 +78,15 @@ namespace cartservice
             {
                 endpoints.MapGrpcService<CartService>();
                 endpoints.MapGrpcService<cartservice.services.HealthCheckService>();
-                endpoints.MapMetrics("/metrics").RequireHost("*:9091");;
+                endpoints.MapMetrics("/metrics").RequireHost("*:9091");
+
+                endpoints.MapGet("/health", async context =>
+                {
+                    context.Response.ContentType = "application/json";
+                    context.Response.StatusCode = 200;
+                    await context.Response.WriteAsync(
+                        "{\"status\":\"healthy\",\"service\":\"cartservice\"}");
+                }).RequireHost("*:9091");
 
                 endpoints.MapGet("/", async context =>
                 {

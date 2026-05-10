@@ -1,0 +1,16 @@
+apiVersion: 1
+
+datasources:
+  - name: Loki
+    type: loki
+    uid: loki
+    url: http://loki:3100
+    isDefault: false
+    editable: false
+    jsonData:
+      maxLines: 1000
+      derivedFields:
+        # link log lines to Prometheus traces by service name
+        - name: service
+          matcherRegex: '"service":"(\w+)"'
+          url: ''

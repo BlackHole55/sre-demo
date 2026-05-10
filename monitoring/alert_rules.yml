@@ -1,0 +1,236 @@
+groups:
+
+  # Service Downtime
+  - name: service_downtime
+    rules:
+
+      - alert: ServiceDown
+        expr: up == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service {{ $labels.job }} is down"
+          description: "Prometheus cannot scrape {{ $labels.job }} (instance {{ $labels.instance }}). The service has been unreachable for more than 30 seconds."
+
+      - alert: FrontendDown
+        expr: absent(http_requests_total{job="frontend"})
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Frontend service is not receiving traffic"
+          description: "No HTTP request metrics from frontend for 1 minute. Service may be crashed or unreachable."
+
+      - alert: ProductCatalogDown
+        expr: absent(grpc_requests_total{job="productcatalogservice"})
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "ProductCatalog service is down"
+          description: "No gRPC metrics from productcatalogservice for 1 minute."
+
+      - alert: CheckoutServiceDown
+        expr: absent(grpc_requests_total{job="checkoutservice"})
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Checkout (Order) service is down"
+          description: "No gRPC metrics from checkoutservice for 1 minute. Orders cannot be placed."
+
+      - alert: AuthServiceDown
+        expr: absent(grpc_requests_total{job="authservice"})
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Auth service is down"
+          description: "No gRPC metrics from authservice for 1 minute. Login and registration are unavailable."
+
+      - alert: CartServiceDown
+        expr: absent(up{job="cartservice"})
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Cart service is down"
+          description: "Cart service has been unreachable for 1 minute. Add-to-cart is unavailable."
+
+      - alert: PostgresDown
+        expr: pg_up == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL is down"
+          description: "PostgreSQL exporter reports database is unreachable. All backend services will fail."
+
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis is down"
+          description: "Redis is unreachable. Cart service will lose session data."
+
+  # High Error Rates
+  - name: error_rates
+    rules:
+
+      - alert: HighFrontendErrorRate
+        expr: |
+          sum(rate(http_requests_total{job="frontend", status=~"Internal Server Error|Bad Gateway|Service Unavailable"}[5m]))
+          /
+          sum(rate(http_requests_total{job="frontend"}[5m]))
+          > 0.05
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate on frontend (> 5%)"
+          description: "Frontend error rate is {{ $value | humanizePercentage }} over the last 5 minutes."
+
+      - alert: CriticalFrontendErrorRate
+        expr: |
+          sum(rate(http_requests_total{job="frontend", status=~"Internal Server Error|Bad Gateway|Service Unavailable"}[5m]))
+          /
+          sum(rate(http_requests_total{job="frontend"}[5m]))
+          > 0.20
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical error rate on frontend (> 20%)"
+          description: "Frontend error rate is {{ $value | humanizePercentage }}. Immediate investigation required."
+
+      - alert: HighCheckoutErrorRate
+        expr: |
+          sum(rate(grpc_requests_total{job="checkoutservice", status!="OK"}[5m]))
+          /
+          sum(rate(grpc_requests_total{job="checkoutservice"}[5m]))
+          > 0.05
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High error rate on checkout service (> 5%)"
+          description: "Checkout error rate is {{ $value | humanizePercentage }}. Orders are failing."
+
+      - alert: HighAuthErrorRate
+        expr: |
+          sum(rate(grpc_requests_total{job="authservice", status!="OK"}[5m]))
+          /
+          sum(rate(grpc_requests_total{job="authservice"}[5m]))
+          > 0.10
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate on auth service (> 10%)"
+          description: "Auth error rate is {{ $value | humanizePercentage }}. Login failures are elevated."
+
+      - alert: PostgresHighDeadlocks
+        expr: rate(pg_stat_database_deadlocks_total{datname="boutique"}[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PostgreSQL deadlocks detected"
+          description: "Deadlock rate is {{ $value }} per second on the boutique database."
+
+  # High CPU Usage
+  - name: cpu_usage
+    rules:
+
+      - alert: HighGoroutineCount
+        expr: go_goroutines{job="frontend"} > 200
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High goroutine count on frontend"
+          description: "Frontend has {{ $value }} goroutines running. May indicate goroutine leak or high load."
+
+      - alert: HighGCPressure
+        expr: rate(go_gc_duration_seconds_sum[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High GC pressure on {{ $labels.job }}"
+          description: "{{ $labels.job }} is spending {{ $value }}s/s in garbage collection. CPU usage is elevated."
+
+      - alert: HighHeapUsage
+        expr: |
+          1 - (go_memstats_heap_idle_bytes / go_memstats_heap_sys_bytes) > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High heap usage on {{ $labels.job }}"
+          description: "{{ $labels.job }} heap is {{ $value | humanizePercentage }} full. Risk of OOM."
+
+      - alert: RedisHighMemory
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis memory usage above 85%"
+          description: "Redis is using {{ $value | humanizePercentage }} of max memory. Evictions may start."
+
+      - alert: PostgresHighConnections
+        expr: |
+          pg_stat_database_numbackends{datname="boutique"}
+          /
+          pg_settings_max_connections
+          > 0.80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PostgreSQL connection pool above 80%"
+          description: "{{ $value | humanizePercentage }} of max connections are in use. Risk of connection exhaustion."
+
+  # Latency
+  - name: latency
+    rules:
+
+      - alert: HighFrontendLatency
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(http_request_duration_seconds_bucket{job="frontend"}[5m])) by (le)
+          ) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High p95 latency on frontend (> 2s)"
+          description: "Frontend p95 latency is {{ $value }}s over the last 5 minutes."
+
+      - alert: HighCheckoutLatency
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(grpc_request_duration_seconds_bucket{job="checkoutservice"}[5m])) by (le)
+          ) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High p95 latency on checkout service (> 5s)"
+          description: "Checkout p95 latency is {{ $value }}s. Orders are taking too long to process."
+
+      - alert: SlowDatabaseQueries
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(db_query_duration_seconds_bucket[5m])) by (le, job)
+          ) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Slow DB queries on {{ $labels.job }} (p95 > 1s)"
+          description: "{{ $labels.job }} p95 database query time is {{ $value }}s."
