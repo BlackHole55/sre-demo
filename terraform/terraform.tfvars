@@ -2,6 +2,7 @@ aws_region       = "eu-west-1"
 project_name     = "boutique"
 instance_type    = "t3.micro"
 public_key_path  = "C:/Users/Meirhan/.ssh/id_ed25519.pub"
+eks_node_instance_type = "t3.medium"
 
 # Restrict SSH to your own IP for security
 # Find your IP at: https://checkip.amazonaws.com
@@ -28,5 +29,15 @@ allowed_ingress_ports = [
     description = "Prometheus"
     port        = 9090
     cidr_blocks = ["0.0.0.0/0"]
+  },
+  { 
+    description = "App k8s",    
+    port = 30080, 
+    cidr_blocks = ["0.0.0.0/0"] 
+  },
+  { 
+    description = "Grafana k8s",
+    port = 30030, 
+    cidr_blocks = ["0.0.0.0/0"] 
   }
 ]

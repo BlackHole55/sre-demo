@@ -1,0 +1,393 @@
+# ================================================================
+# services.yaml — all application deployments and services
+# frontend, productcatalogservice, checkoutservice,
+# authservice, cartservice
+# ================================================================
+
+# ── Frontend ──────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: boutique
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port:   "9090"
+        prometheus.io/path:   "/metrics"
+    spec:
+      containers:
+        - name: frontend
+          image: boutique/frontend:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8080
+            - containerPort: 9090   # metrics
+          envFrom:
+            - configMapRef:
+                name: boutique-config
+          resources:
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+            requests:
+              memory: "128Mi"
+              cpu: "250m"
+          readinessProbe:
+            httpGet:
+              path: /_healthz
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /_healthz
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: boutique
+spec:
+  selector:
+    app: frontend
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+      nodePort: 30080
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+  type: NodePort
+
+---
+# ── ProductCatalog ────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: productcatalogservice
+  namespace: boutique
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: productcatalogservice
+  template:
+    metadata:
+      labels:
+        app: productcatalogservice
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port:   "9090"
+        prometheus.io/path:   "/metrics"
+    spec:
+      containers:
+        - name: productcatalogservice
+          image: boutique/productcatalogservice:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 3550
+            - containerPort: 9090
+          env:
+            - name: PORT
+              value: "3550"
+            - name: POSTGRES_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: boutique-secrets
+                  key: PRODUCTCATALOG_POSTGRES_DSN
+          resources:
+            limits:
+              memory: "128Mi"
+              cpu: "250m"
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 9090
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9090
+            initialDelaySeconds: 20
+            periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: productcatalogservice
+  namespace: boutique
+spec:
+  selector:
+    app: productcatalogservice
+  ports:
+    - name: grpc
+      port: 3550
+      targetPort: 3550
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+
+---
+# ── Checkout / Order ──────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: checkoutservice
+  namespace: boutique
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: checkoutservice
+  template:
+    metadata:
+      labels:
+        app: checkoutservice
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port:   "9090"
+        prometheus.io/path:   "/metrics"
+    spec:
+      containers:
+        - name: checkoutservice
+          image: boutique/checkoutservice:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 5050
+            - containerPort: 9090
+          env:
+            - name: PORT
+              value: "5050"
+            - name: POSTGRES_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: boutique-secrets
+                  key: CHECKOUT_POSTGRES_DSN
+            - name: PRODUCT_CATALOG_SERVICE_ADDR
+              valueFrom:
+                configMapKeyRef:
+                  name: boutique-config
+                  key: PRODUCT_CATALOG_SERVICE_ADDR
+            - name: CART_SERVICE_ADDR
+              valueFrom:
+                configMapKeyRef:
+                  name: boutique-config
+                  key: CART_SERVICE_ADDR
+            - name: CURRENCY_SERVICE_ADDR
+              valueFrom:
+                configMapKeyRef:
+                  name: boutique-config
+                  key: CURRENCY_SERVICE_ADDR
+            - name: PAYMENT_SERVICE_ADDR
+              valueFrom:
+                configMapKeyRef:
+                  name: boutique-config
+                  key: PAYMENT_SERVICE_ADDR
+            - name: SHIPPING_SERVICE_ADDR
+              valueFrom:
+                configMapKeyRef:
+                  name: boutique-config
+                  key: SHIPPING_SERVICE_ADDR
+            - name: EMAIL_SERVICE_ADDR
+              valueFrom:
+                configMapKeyRef:
+                  name: boutique-config
+                  key: EMAIL_SERVICE_ADDR
+          resources:
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+            requests:
+              memory: "128Mi"
+              cpu: "250m"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 9090
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9090
+            initialDelaySeconds: 20
+            periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: checkoutservice
+  namespace: boutique
+spec:
+  selector:
+    app: checkoutservice
+  ports:
+    - name: grpc
+      port: 5050
+      targetPort: 5050
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+
+---
+# ── Auth ──────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: authservice
+  namespace: boutique
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: authservice
+  template:
+    metadata:
+      labels:
+        app: authservice
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port:   "9090"
+        prometheus.io/path:   "/metrics"
+    spec:
+      containers:
+        - name: authservice
+          image: boutique/authservice:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 9555
+            - containerPort: 9090
+          env:
+            - name: PORT
+              value: "9555"
+            - name: POSTGRES_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: boutique-secrets
+                  key: AUTH_POSTGRES_DSN
+          resources:
+            limits:
+              memory: "128Mi"
+              cpu: "250m"
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 9090
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9090
+            initialDelaySeconds: 20
+            periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: authservice
+  namespace: boutique
+spec:
+  selector:
+    app: authservice
+  ports:
+    - name: grpc
+      port: 9555
+      targetPort: 9555
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+
+---
+# ── Cart ──────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cartservice
+  namespace: boutique
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: cartservice
+  template:
+    metadata:
+      labels:
+        app: cartservice
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port:   "9091"
+        prometheus.io/path:   "/metrics"
+    spec:
+      containers:
+        - name: cartservice
+          image: boutique/cartservice:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 7070
+            - containerPort: 9091
+          env:
+            - name: PORT
+              value: "7070"
+            - name: REDIS_ADDR
+              valueFrom:
+                configMapKeyRef:
+                  name: boutique-config
+                  key: REDIS_ADDR
+          resources:
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+            requests:
+              memory: "128Mi"
+              cpu: "250m"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 9091
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9091
+            initialDelaySeconds: 30
+            periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cartservice
+  namespace: boutique
+spec:
+  selector:
+    app: cartservice
+  ports:
+    - name: grpc
+      port: 7070
+      targetPort: 7070
+    - name: metrics
+      port: 9091
+      targetPort: 9091

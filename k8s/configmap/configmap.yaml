@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: boutique-config
+  namespace: boutique
+data:
+  # ── Service endpoints ─────────────────────────────────────────
+  PRODUCT_CATALOG_SERVICE_ADDR: "productcatalogservice:3550"
+  CHECKOUT_SERVICE_ADDR:        "checkoutservice:5050"
+  CART_SERVICE_ADDR:            "cartservice:7070"
+  AUTH_SERVICE_ADDR:            "authservice:9555"
+  CURRENCY_SERVICE_ADDR:        ""
+  RECOMMENDATION_SERVICE_ADDR:  ""
+  SHIPPING_SERVICE_ADDR:        ""
+  EMAIL_SERVICE_ADDR:           ""
+  PAYMENT_SERVICE_ADDR:         ""
+
+  # ── Frontend ──────────────────────────────────────────────────
+  PORT:             "8080"
+  ENABLE_PROFILER:  "0"
+  ENV_PLATFORM:     "aws"
+
+  # ── Redis ─────────────────────────────────────────────────────
+  REDIS_ADDR: "redis:6379"
+
+  # ── Database names ────────────────────────────────────────────
+  POSTGRES_DB: "boutique"
