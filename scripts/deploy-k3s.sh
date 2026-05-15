@@ -105,7 +105,7 @@ if ! $SKIP_BUILD; then
   cd "$REPO_DIR"
 
   declare -A SERVICES=(
-    ["frontend"]="src/frontend"
+    ["frontend"]="./frontend"
     ["productcatalogservice"]="src/productcatalogservice"
     ["checkoutservice"]="src/checkoutservice"
     ["authservice"]="src/authservice"
