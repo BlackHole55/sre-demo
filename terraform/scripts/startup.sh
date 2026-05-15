@@ -39,17 +39,46 @@ echo "=== [3/5] Clone repository ==="
 git clone https://github.com/BlackHole55/sre-demo.git /opt/sre-demo
 chown -R ubuntu:ubuntu /opt/sre-demo
 
-# echo "=== [4/5] Start stack ==="
-# cd /opt/sre-demo
-# docker compose pull --ignore-pull-failures || true
-# docker compose up --build -d
+echo "=== [4/5] Install k3s ==="
+curl -sfL https://get.k3s.io | sh -
 
-# echo "=== [5/5] Enable auto-start on reboot ==="
-# cat > /etc/systemd/system/boutique.service <<'SERVICE'
-# [Unit]
-# Description=Online Boutique Docker Compose Stack
-# After=docker.service network-online.target
-# Requires=docker.service
+# set up kubectl for ubuntu user
+chmod 644 /etc/rancher/k3s/k3s.yaml
+mkdir -p /home/ubuntu/.kube
+cp /etc/rancher/k3s/k3s.yaml /home/ubuntu/.kube/config
+chown ubuntu:ubuntu /home/ubuntu/.kube/config
+
+# wait for node to be ready
+echo "Waiting for k3s node to be ready..."
+until sudo k3s kubectl get nodes | grep -q "Ready"; do
+  sleep 5
+done
+echo "k3s node is Ready"
+
+echo "=== [5/5] Deploy to k3s ==="
+cd /opt/sre-demo
+
+# create .env
+cp .env.template .env
+
+# build images as root (docker is available)
+for service in frontend productcatalogservice checkoutservice authservice cartservice; do
+  echo "Building boutique/$service..."
+  docker build -t boutique/$service:latest src/$service/ 2>/dev/null || \
+  docker build -t boutique/$service:latest src/$service/src/ 2>/dev/null || true
+done
+
+# import into k3s
+for service in frontend productcatalogservice checkoutservice authservice cartservice; do
+  echo "Importing $service into k3s..."
+  docker save boutique/$service:latest | k3s ctr images import - || true
+done
+
+# deploy
+chmod +x scripts/deploy-k3s.sh
+bash scripts/deploy-k3s.sh --skip-build
+
+echo "=== Boot complete ==="
 
 # [Service]
 # Type=oneshot
@@ -67,4 +96,4 @@ chown -R ubuntu:ubuntu /opt/sre-demo
 # systemctl daemon-reload
 # systemctl enable boutique.service
 
-echo "=== Boot complete. Stack is starting. ==="
+# echo "=== Boot complete. Stack is starting. ==="
