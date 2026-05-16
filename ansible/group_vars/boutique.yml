@@ -1,0 +1,31 @@
+# ansible/group_vars/boutique.yml
+# Variables for all boutique hosts
+
+# ── Repo ────────────────────────────────────────────────────────
+repo_url:  "https://github.com/BlackHole55/sre-demo.git"
+repo_dir:  "/opt/sre-demo"
+repo_branch: "main"
+
+# ── Docker ──────────────────────────────────────────────────────
+docker_users:
+  - ubuntu
+
+# ── k3s ─────────────────────────────────────────────────────────
+k3s_version: "v1.28.8+k3s1"
+kubeconfig_path: "/home/ubuntu/.kube/config"
+
+# ── App images ───────────────────────────────────────────────────
+app_images:
+  - name: boutique/frontend
+    context: "{{ repo_dir }}/src/frontend"
+  - name: boutique/productcatalogservice
+    context: "{{ repo_dir }}/src/productcatalogservice"
+  - name: boutique/checkoutservice
+    context: "{{ repo_dir }}/src/checkoutservice"
+  - name: boutique/authservice
+    context: "{{ repo_dir }}/src/authservice"
+  - name: boutique/cartservice
+    context: "{{ repo_dir }}/src/cartservice/src"
+
+# ── Swap ─────────────────────────────────────────────────────────
+swap_size_mb: 4096

@@ -1,0 +1,17 @@
+---
+- name: Provision Online Boutique server
+  hosts: boutique
+  gather_facts: yes
+  roles:
+    - role: common
+      tags: [common, always]
+    - role: docker
+      tags: [docker]
+    - role: k3s
+      tags: [k3s]
+    - role: boutique
+      tags: [boutique, deploy]
+  post_tasks:
+    - name: Provisioning complete
+      debug:
+        msg: "Server provisioned — run deploy.yml to redeploy"

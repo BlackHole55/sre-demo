@@ -1,0 +1,85 @@
+---
+# roles/common/tasks/main.yml
+# Base system configuration
+
+- name: Update apt cache
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+  become: yes
+
+- name: Install required packages
+  apt:
+    name:
+      - ca-certificates
+      - curl
+      - gnupg
+      - git
+      - python3
+      - python3-pip
+      - wget
+      - unzip
+    state: present
+  become: yes
+
+- name: Configure swap file
+  block:
+    - name: Check if swap file exists
+      stat:
+        path: /swapfile
+      register: swap_file
+
+    - name: Create swap file
+      command: fallocate -l {{ swap_size_mb }}M /swapfile
+      when: not swap_file.stat.exists
+      become: yes
+
+    - name: Set swap file permissions
+      file:
+        path: /swapfile
+        mode: '0600'
+      become: yes
+
+    - name: Format swap file
+      command: mkswap /swapfile
+      when: not swap_file.stat.exists
+      become: yes
+
+    - name: Enable swap
+      command: swapon /swapfile
+      when: not swap_file.stat.exists
+      become: yes
+
+    - name: Persist swap in fstab
+      lineinfile:
+        path: /etc/fstab
+        line: '/swapfile none swap sw 0 0'
+        state: present
+      become: yes
+
+- name: Clone repository
+  git:
+    repo: "{{ repo_url }}"
+    dest: "{{ repo_dir }}"
+    version: "{{ repo_branch }}"
+    force: yes
+  become: yes
+
+- name: Set repo ownership
+  file:
+    path: "{{ repo_dir }}"
+    owner: ubuntu
+    group: ubuntu
+    recurse: yes
+  become: yes
+
+- name: Create .env from template
+  copy:
+    src: "{{ repo_dir }}/.env.template"
+    dest: "{{ repo_dir }}/.env"
+    remote_src: yes
+    owner: ubuntu
+    group: ubuntu
+    force: no   # don't overwrite if already exists
+  become: yes
+  ignore_errors: yes

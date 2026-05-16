@@ -1,0 +1,22 @@
+---
+- name: Deploy Online Boutique
+  hosts: boutique
+  gather_facts: no
+  tasks:
+    - name: Pull latest code
+      git:
+        repo: "{{ repo_url }}"
+        dest: "{{ repo_dir }}"
+        version: "{{ repo_branch }}"
+        force: yes
+      become: yes
+    - name: Set repo ownership
+      file:
+        path: "{{ repo_dir }}"
+        owner: ubuntu
+        group: ubuntu
+        recurse: yes
+      become: yes
+  roles:
+    - role: boutique
+      tags: [deploy]

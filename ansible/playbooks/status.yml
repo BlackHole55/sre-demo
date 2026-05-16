@@ -1,0 +1,34 @@
+---
+- name: Check boutique status
+  hosts: boutique
+  gather_facts: no
+  tasks:
+    - name: Get pod status
+      command: kubectl get pods -n boutique -o wide
+      become: yes
+      become_user: ubuntu
+      environment:
+        KUBECONFIG: /home/ubuntu/.kube/config
+      register: pods
+      changed_when: false
+    - name: Show pods
+      debug:
+        msg: "{{ pods.stdout_lines }}"
+    - name: Get services
+      command: kubectl get svc -n boutique
+      become: yes
+      become_user: ubuntu
+      environment:
+        KUBECONFIG: /home/ubuntu/.kube/config
+      register: svcs
+      changed_when: false
+    - name: Show services
+      debug:
+        msg: "{{ svcs.stdout_lines }}"
+    - name: Check memory
+      command: free -h
+      register: mem
+      changed_when: false
+    - name: Show memory
+      debug:
+        msg: "{{ mem.stdout_lines }}"
