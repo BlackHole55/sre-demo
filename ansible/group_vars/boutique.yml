@@ -17,7 +17,7 @@ kubeconfig_path: "/home/ubuntu/.kube/config"
 # ── App images ───────────────────────────────────────────────────
 app_images:
   - name: boutique/frontend
-    context: "{{ repo_dir }}/src/frontend"
+    context: "{{ repo_dir }}/frontend"
   - name: boutique/productcatalogservice
     context: "{{ repo_dir }}/src/productcatalogservice"
   - name: boutique/checkoutservice
