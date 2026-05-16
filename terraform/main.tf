@@ -132,9 +132,6 @@ resource "aws_instance" "boutique" {
   key_name                    = aws_key_pair.boutique.key_name
   associate_public_ip_address = true
 
-  user_data                   = file("${path.module}/scripts/startup.sh")
-  user_data_replace_on_change = true
-
   root_block_device {
     volume_size           = 40
     volume_type           = "gp3"
