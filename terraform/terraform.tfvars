@@ -1,6 +1,6 @@
 aws_region       = "eu-west-1"
 project_name     = "boutique"
-instance_type    = "t3.micro"
+instance_type    = "c7i-flex.large"
 public_key_path  = "C:/Users/Meirhan/.ssh/id_ed25519.pub"
 eks_node_instance_type = "t3.medium"
 

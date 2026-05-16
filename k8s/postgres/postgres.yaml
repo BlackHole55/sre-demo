@@ -68,7 +68,7 @@ spec:
         name: pgdata
       spec:
         accessModes: ["ReadWriteOnce"]
-        storageClassName: gp2   # AWS EKS default storage class
+        storageClassName: local-path
         resources:
           requests:
             storage: 10Gi

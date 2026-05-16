@@ -263,7 +263,7 @@ spec:
     - port: 3000
       targetPort: 3000
       nodePort: 30030
-  type: nodePort   # expose Grafana via AWS NLB
+  type: NodePort   # expose Grafana via AWS NLB
 
 ---
 # ── Postgres Exporter ─────────────────────────────────────────────

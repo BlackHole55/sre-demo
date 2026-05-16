@@ -55,28 +55,28 @@ until sudo k3s kubectl get nodes | grep -q "Ready"; do
 done
 echo "k3s node is Ready"
 
-echo "=== [5/5] Deploy to k3s ==="
-cd /opt/sre-demo
+# echo "=== [5/5] Deploy to k3s ==="
+# cd /opt/sre-demo
 
-# create .env
-cp .env.template .env
+# # create .env
+# cp .env.template .env
 
-# build images as root (docker is available)
-for service in frontend productcatalogservice checkoutservice authservice cartservice; do
-  echo "Building boutique/$service..."
-  docker build -t boutique/$service:latest src/$service/ 2>/dev/null || \
-  docker build -t boutique/$service:latest src/$service/src/ 2>/dev/null || true
-done
+# # build images as root (docker is available)
+# for service in frontend productcatalogservice checkoutservice authservice cartservice; do
+#   echo "Building boutique/$service..."
+#   docker build -t boutique/$service:latest src/$service/ 2>/dev/null || \
+#   docker build -t boutique/$service:latest src/$service/src/ 2>/dev/null || true
+# done
 
-# import into k3s
-for service in frontend productcatalogservice checkoutservice authservice cartservice; do
-  echo "Importing $service into k3s..."
-  docker save boutique/$service:latest | k3s ctr images import - || true
-done
+# # import into k3s
+# for service in frontend productcatalogservice checkoutservice authservice cartservice; do
+#   echo "Importing $service into k3s..."
+#   docker save boutique/$service:latest | k3s ctr images import - || true
+# done
 
-# deploy
-chmod +x scripts/deploy-k3s.sh
-bash scripts/deploy-k3s.sh --skip-build
+# # deploy
+# chmod +x scripts/deploy-k3s.sh
+# bash scripts/deploy-k3s.sh --skip-build
 
 echo "=== Boot complete ==="
 
