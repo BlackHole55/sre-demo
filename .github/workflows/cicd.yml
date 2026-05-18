@@ -77,7 +77,7 @@ jobs:
     strategy:
       matrix:
         service:
-          - path: src/frontend
+          - path: frontend
             name: frontend
           - path: src/productcatalogservice
             name: productcatalogservice
