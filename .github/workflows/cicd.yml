@@ -74,6 +74,22 @@ jobs:
     runs-on: ubuntu-latest
     needs: validate
 
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: user
+          POSTGRES_PASSWORD: pass
+          POSTGRES_DB: db
+        ports:
+          - 5432:5432
+        # Wait until postgres is healthy before running the steps
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     strategy:
       fail-fast: false
       matrix:
