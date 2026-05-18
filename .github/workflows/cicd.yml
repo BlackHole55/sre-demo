@@ -128,13 +128,17 @@ jobs:
         working-directory: ${{ matrix.service.path }}
         run: |
           # 1. Start the service binary in the background
-          PORT=${{ matrix.service.port }} \
-          PRODUCT_CATALOG_JSON="./products.json" \
-          POSTGRES_DSN="postgres://user:pass@localhost:5432/db?sslmode=disable" \
-          DISABLE_TRACING=1 \
-          DISABLE_PROFILER=1 \
-          EXTRA_LATENCY="0s" \
-          ./server > server.log 2>&1 &
+          if [ "${{ matrix.service.name }}" = "authservice" ]; then
+            # Authservice needs the database connection to pass its ping check
+            PORT=${{ matrix.service.port }} \
+            POSTGRES_DSN="postgres://user:pass@localhost:5432/db?sslmode=disable" \
+            DISABLE_TRACING=1 DISABLE_PROFILER=1 ./server > server.log 2>&1 &
+          else
+            # Productcatalogservice and checkoutservice will load local fallbacks without POSTGRES_DSN
+            PORT=${{ matrix.service.port }} \
+            DISABLE_TRACING=1 DISABLE_PROFILER=1 ./server > server.log 2>&1 &
+          fi
+          
           SERVICE_PID=$!
           
           # 2. Give the microservice a moment to boot up and bind to its port
