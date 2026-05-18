@@ -160,7 +160,7 @@ jobs:
             go install github.com/grpc-ecosystem/grpc-health-probe@latest
             
             echo "Probing gRPC ${{ matrix.service.name }} on port ${{ matrix.service.port }}..."
-            if ! ~/go/bin/grpc-health-probe -addr=localhost:${{ matrix.service.port }} -timeout=5s; then
+            if ! ~/go/bin/grpc-health-probe -addr=localhost:${{ matrix.service.port }}; then
               echo "Probe timed out or failed."
               echo "=== RUNTIME LOGS ==="
               cat server.log
