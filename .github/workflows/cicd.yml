@@ -128,27 +128,47 @@ jobs:
         working-directory: ${{ matrix.service.path }}
         run: |
           # 1. Start the service binary in the background
-          PORT=${{ matrix.service.port }} POSTGRES_DSN="postgres://user:pass@localhost:5432/db?sslmode=disable" DISABLE_TRACING=1 DISABLE_PROFILER=1 ./server &
+          PORT=${{ matrix.service.port }} \
+          PRODUCT_CATALOG_JSON="./products.json" \
+          POSTGRES_DSN="postgres://user:pass@localhost:5432/db?sslmode=disable" \
+          DISABLE_TRACING=1 \
+          DISABLE_PROFILER=1 \
+          EXTRA_LATENCY="0s" \
+          ./server > server.log 2>&1 &
           SERVICE_PID=$!
           
           # 2. Give the microservice a moment to boot up and bind to its port
-          sleep 5
+          sleep 8
+
+          # 3. Check if the process died prematurely during those 8 seconds
+          if ! kill -0 $SERVICE_PID 2>/dev/null; then
+            echo "ERROR: ${{ matrix.service.name }} crashed immediately on startup!"
+            echo "=== STARTUP LOGS ==="
+            cat server.log
+            echo "===================="
+            exit 1
+          fi
           
-          # 3. Perform the health probe based on service type
+          # 4. Perform the health probe based on service type
           if [ "${{ matrix.service.name }}" = "frontend" ]; then
-            # Frontend is an HTTP web server
-            echo "Probing HTTP frontend on port ${{ matrix.service.port }}..."
-            curl --fail http://localhost:${{ matrix.service.port }}/_healthz
+          echo "Probing HTTP frontend on port ${{ matrix.service.port }}..."
+          if ! curl --fail http://localhost:${{ matrix.service.port }}/_healthz; then
+            echo "=== RUNTIME LOGS ==="; cat server.log; exit 1
+          fi
           else
-            # All other services are gRPC microservices
-            echo "Downloading gRPC health probe utility..."
+            echo "Installing gRPC health probe utility via Go..."
             go install github.com/grpc-ecosystem/grpc-health-probe@latest
             
             echo "Probing gRPC ${{ matrix.service.name }} on port ${{ matrix.service.port }}..."
-            ~/go/bin/grpc-health-probe -addr=localhost:${{ matrix.service.port }}
+            if ! ~/go/bin/grpc-health-probe -addr=localhost:${{ matrix.service.port }} -timeout=5s; then
+              echo "Probe timed out or failed."
+              echo "=== RUNTIME LOGS ==="
+              cat server.log
+              exit 1
+            fi
           fi
           
-          # 4. Clean up the background process safely
+          # 5. Clean up the background process safely
           kill $SERVICE_PID
 
   # ================================================================
