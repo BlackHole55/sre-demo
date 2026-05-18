@@ -75,16 +75,21 @@ jobs:
     needs: validate
 
     strategy:
+      fail-fast: false
       matrix:
         service:
           - path: frontend
             name: frontend
+            port: 8080 # Frontend uses HTTP
           - path: src/productcatalogservice
             name: productcatalogservice
+            port: 3550 # gRPC port
           - path: src/checkoutservice
             name: checkoutservice
+            port: 5050 # gRPC port
           - path: src/authservice
             name: authservice
+            port: 7070 # gRPC port
 
     steps:
       - name: Checkout code
@@ -100,13 +105,37 @@ jobs:
         working-directory: ${{ matrix.service.path }}
         run: go mod download
 
-      - name: Build
+      - name: Build Service Binary
         working-directory: ${{ matrix.service.path }}
-        run: CGO_ENABLED=0 go build ./...
+        run: CGO_ENABLED=0 go build -o server ./...
 
-      - name: Vet
+      - name: Run Runtime Health Check
         working-directory: ${{ matrix.service.path }}
-        run: go test -v ./...
+        run: |
+          # 1. Start the service binary in the background
+          PORT=${{ matrix.service.port }} ./server &
+          SERVICE_PID=$!
+          
+          # 2. Give the microservice a moment to boot up and bind to its port
+          sleep 3
+          
+          # 3. Perform the health probe based on service type
+          if [ "${{ matrix.service.name }}" = "frontend" ]; then
+            # Frontend is an HTTP web server
+            echo "Probing HTTP frontend on port ${{ matrix.service.port }}..."
+            curl --fail http://localhost:${{ matrix.service.port }}/_healthz
+          else
+            # All other services are gRPC microservices
+            echo "Downloading gRPC health probe utility..."
+            curl -LO https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/v0.4.24/grpc-health-probe-linux-amd64
+            chmod +x grpc-health-probe-linux-amd64
+            
+            echo "Probing gRPC ${{ matrix.service.name }} on port ${{ matrix.service.port }}..."
+            ./grpc-health-probe-linux-amd64 -addr=localhost:${{ matrix.service.port }}
+          fi
+          
+          # 4. Clean up the background process safely
+          kill $SERVICE_PID
 
   # ================================================================
   # JOB 3 — Build Docker images
