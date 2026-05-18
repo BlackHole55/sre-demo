@@ -286,8 +286,8 @@ jobs:
 
       - name: Configure SSH Key
         env:
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }} # Assuming your secret is named this
-          SSH_HOST: ${{ secrets.SSH_HOST }}              # Replace with your host IP/Domain secret
+          SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_KEY }} # Assuming your secret is named this
+          SSH_HOST: ${{ secrets.EC2_HOST }}              # Replace with your host IP/Domain secret
         run: |
           mkdir -p ~/.ssh
           
