@@ -7,7 +7,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: ${{ github.repository_owner }}/boutique
+  IMAGE_PREFIX: blackhole55/boutique
 
 jobs:
 
