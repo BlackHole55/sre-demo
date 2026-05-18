@@ -107,7 +107,7 @@ jobs:
 
       - name: Build Service Binary
         working-directory: ${{ matrix.service.path }}
-        run: CGO_ENABLED=0 go build -o server ./...
+        run: CGO_ENABLED=0 go build -o server .
 
       - name: Run Runtime Health Check
         working-directory: ${{ matrix.service.path }}
