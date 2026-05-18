@@ -113,11 +113,11 @@ jobs:
         working-directory: ${{ matrix.service.path }}
         run: |
           # 1. Start the service binary in the background
-          PORT=${{ matrix.service.port }} ./server &
+          PORT=${{ matrix.service.port }} DISABLE_TRACING=1 DISABLE_PROFILER=1 ./server &
           SERVICE_PID=$!
           
           # 2. Give the microservice a moment to boot up and bind to its port
-          sleep 3
+          sleep 5
           
           # 3. Perform the health probe based on service type
           if [ "${{ matrix.service.name }}" = "frontend" ]; then
