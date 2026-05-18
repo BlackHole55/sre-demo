@@ -127,8 +127,7 @@ jobs:
           else
             # All other services are gRPC microservices
             echo "Downloading gRPC health probe utility..."
-            wget -q https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/v0.4.24/grpc-health-probe-linux-amd64
-            chmod +x grpc-health-probe-linux-amd64
+            go install github.com/grpc-ecosystem/grpc-health-probe@latest
             
             echo "Probing gRPC ${{ matrix.service.name }} on port ${{ matrix.service.port }}..."
             ./grpc-health-probe-linux-amd64 -addr=localhost:${{ matrix.service.port }}
