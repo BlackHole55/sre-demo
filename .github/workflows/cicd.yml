@@ -284,12 +284,19 @@ jobs:
           pip install ansible
           ansible --version
 
-      - name: Set up SSH key
+      - name: Configure SSH Key
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }} # Assuming your secret is named this
+          SSH_HOST: ${{ secrets.SSH_HOST }}              # Replace with your host IP/Domain secret
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
+          
+          # Safely write the multiline secret using an environment variable
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+          
+          # Scan the remote host to prevent SSH host verification prompts
+          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
 
       - name: Update inventory with EC2 host
         run: |
