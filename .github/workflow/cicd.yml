@@ -11,9 +11,7 @@ env:
 
 jobs:
 
-  # ================================================================
   # JOB 1 — Validate configuration files
-  # ================================================================
   validate:
     name: Validate configs
     runs-on: ubuntu-latest
