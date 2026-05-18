@@ -89,7 +89,7 @@ jobs:
             port: 5050 # gRPC port
           - path: src/authservice
             name: authservice
-            port: 7070 # gRPC port
+            port: 9555 # gRPC port
 
     steps:
       - name: Checkout code
@@ -113,7 +113,7 @@ jobs:
         working-directory: ${{ matrix.service.path }}
         run: |
           # 1. Start the service binary in the background
-          PORT=${{ matrix.service.port }} DISABLE_TRACING=1 DISABLE_PROFILER=1 ./server &
+          PORT=${{ matrix.service.port }} POSTGRES_DSN="postgres://user:pass@localhost:5432/db" ./server &
           SERVICE_PID=$!
           
           # 2. Give the microservice a moment to boot up and bind to its port
