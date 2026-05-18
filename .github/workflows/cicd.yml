@@ -130,7 +130,7 @@ jobs:
             go install github.com/grpc-ecosystem/grpc-health-probe@latest
             
             echo "Probing gRPC ${{ matrix.service.name }} on port ${{ matrix.service.port }}..."
-            ./grpc-health-probe-linux-amd64 -addr=localhost:${{ matrix.service.port }}
+            ~/go/bin/grpc-health-probe -addr=localhost:${{ matrix.service.port }}
           fi
           
           # 4. Clean up the background process safely
