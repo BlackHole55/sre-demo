@@ -106,7 +106,7 @@ jobs:
 
       - name: Vet
         working-directory: ${{ matrix.service.path }}
-        run: go vet ./...
+        run: go test -v ./...
 
   # ================================================================
   # JOB 3 — Build Docker images
