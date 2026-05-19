@@ -18,5 +18,5 @@
         recurse: yes
       become: yes
   roles:
-    - role: boutique
+    - role: ../roles/boutique
       tags: [deploy]
