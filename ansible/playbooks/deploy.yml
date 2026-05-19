@@ -19,4 +19,5 @@
       become: yes
   roles:
     - role: ../roles/boutique
+      repo_dir: "{{ playbook_dir }}/../.."
       tags: [deploy]
