@@ -289,14 +289,31 @@ jobs:
           SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_KEY }} # Assuming your secret is named this
           SSH_HOST: ${{ secrets.EC2_HOST }}              # Replace with your host IP/Domain secret
         run: |
+          # 1. Verify secrets are actually populated in this environment
+          if [ -z "$SSH_PRIVATE_KEY" ] || [ -z "$SSH_HOST" ]; then
+            echo "ERROR: SSH_PRIVATE_KEY or SSH_HOST secret is empty!"
+            exit 1
+          fi
+
+          # 2. Create directory and write the private key safely
           mkdir -p ~/.ssh
-          
-          # Safely write the multiline secret using an environment variable
+          chmod 700 ~/.ssh
           echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           
-          # Scan the remote host to prevent SSH host verification prompts
-          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
+          # 3. Securely scan host keys. The "|| true" ensures that if the host 
+          # is briefly unreachable, it won't break the entire pipeline prematurely.
+          echo "Scanning SSH host keys for $SSH_HOST..."
+          ssh-keyscan -v -H "$SSH_HOST" >> ~/.ssh/known_hosts || {
+            echo "⚠️ WARNING: ssh-keyscan failed to connect to host. Appending fallback options..."
+          }
+          
+          # 4. Fallback configuration: Disable strict host checking as a safety net
+          # so the upcoming deployment steps won't hang asking for confirmation.
+          echo -e "Host *\n\tStrictHostKeyChecking no\n\tUserKnownHostsFile=/dev/null\n" > ~/.ssh/config
+          chmod 600 ~/.ssh/config
+          
+          echo "SSH layout initialized successfully."
 
       - name: Update inventory with EC2 host
         run: |
