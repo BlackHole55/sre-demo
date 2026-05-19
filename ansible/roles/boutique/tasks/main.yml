@@ -1,61 +1,60 @@
----
-# roles/boutique/tasks/main.yml
-
-# ── Determine working directory ───────────────────────────────────
-# Uses GITHUB_WORKSPACE when running in CI, repo_dir when running manually
+# ── Determine where we are ────────────────────────────────────────
 - name: Set working directory
   set_fact:
     work_dir: "{{ lookup('env', 'GITHUB_WORKSPACE') | default(repo_dir, true) }}"
-
-- name: Show working directory
-  debug:
-    msg: "Working directory: {{ work_dir }}"
+    running_in_ci: "{{ lookup('env', 'GITHUB_WORKSPACE') != '' }}"
 
 # ================================================================
-# PATCH MANIFESTS FOR K3S
+# PATCH MANIFESTS — runs locally in CI, remotely when manual
 # ================================================================
 - name: Fix storage class gp2 -> local-path
   shell: |
     find {{ work_dir }}/k8s -name "*.yaml" -exec \
       sed -i 's/storageClassName: gp2/storageClassName: local-path/g' {} \;
-  become: yes
+  delegate_to: "{{ 'localhost' if running_in_ci else inventory_hostname }}"
+  become: "{{ false if running_in_ci else true }}"
 
 - name: Fix storage class standard -> local-path
   shell: |
     find {{ work_dir }}/k8s -name "*.yaml" -exec \
       sed -i 's/storageClassName: standard/storageClassName: local-path/g' {} \;
-  become: yes
+  delegate_to: "{{ 'localhost' if running_in_ci else inventory_hostname }}"
+  become: "{{ false if running_in_ci else true }}"
 
 - name: Fix image references
   shell: |
     find {{ work_dir }}/k8s -name "*.yaml" -exec \
       sed -i 's|YOUR_ECR_REPO/|boutique/|g' {} \;
-  become: yes
+  delegate_to: "{{ 'localhost' if running_in_ci else inventory_hostname }}"
+  become: "{{ false if running_in_ci else true }}"
 
-- name: Set replicas to 1 for single node
+- name: Set replicas to 1
   replace:
     path: "{{ work_dir }}/k8s/services/services.yaml"
     regexp: 'replicas: 2'
     replace: 'replicas: 1'
-  become: yes
+  delegate_to: "{{ 'localhost' if running_in_ci else inventory_hostname }}"
+  become: "{{ false if running_in_ci else true }}"
 
-- name: Remove headless clusterIP from postgres service
+- name: Remove headless clusterIP
   replace:
     path: "{{ work_dir }}/k8s/postgres/postgres.yaml"
     regexp: '  clusterIP: None'
     replace: ''
-  become: yes
+  delegate_to: "{{ 'localhost' if running_in_ci else inventory_hostname }}"
+  become: "{{ false if running_in_ci else true }}"
 
-- name: Add imagePullPolicy Never if not present
+- name: Add imagePullPolicy Never
   shell: |
     if ! grep -q "imagePullPolicy: Never" {{ work_dir }}/k8s/services/services.yaml; then
       sed -i '/image: boutique\//a\          imagePullPolicy: Never' \
         {{ work_dir }}/k8s/services/services.yaml
     fi
-  become: yes
+  delegate_to: "{{ 'localhost' if running_in_ci else inventory_hostname }}"
+  become: "{{ false if running_in_ci else true }}"
 
 # ================================================================
-# BUILD IMAGES
+# BUILD IMAGES — always on EC2
 # ================================================================
 - name: Build Docker images
   community.docker.docker_image:
@@ -63,7 +62,7 @@
     tag: latest
     source: build
     build:
-      path: "{{ item.context }}"
+      path: "{{ repo_dir }}/{{ item.context | regex_replace(repo_dir + '/', '') }}"
       pull: no
     state: present
   loop: "{{ app_images }}"
@@ -76,17 +75,25 @@
   changed_when: true
 
 # ================================================================
-# DEPLOY
+# DEPLOY — always on EC2
+# Copy patched manifests to EC2 if running in CI
 # ================================================================
+- name: Copy patched manifests to EC2 (CI only)
+  synchronize:
+    src: "{{ work_dir }}/k8s/"
+    dest: "{{ repo_dir }}/k8s/"
+    mode: push
+  when: running_in_ci | bool
+
 - name: Apply namespace
-  command: kubectl apply -f {{ work_dir }}/k8s/namespace/
+  command: kubectl apply -f {{ repo_dir }}/k8s/namespace/
   become: yes
   become_user: ubuntu
   environment:
     KUBECONFIG: "{{ kubeconfig_path }}"
 
 - name: Apply configmap and secrets
-  command: kubectl apply -f {{ work_dir }}/k8s/{{ item }}/
+  command: kubectl apply -f {{ repo_dir }}/k8s/{{ item }}/
   loop:
     - configmap
     - secrets
@@ -96,7 +103,7 @@
     KUBECONFIG: "{{ kubeconfig_path }}"
 
 - name: Apply postgres and redis
-  command: kubectl apply -f {{ work_dir }}/k8s/{{ item }}/
+  command: kubectl apply -f {{ repo_dir }}/k8s/{{ item }}/
   loop:
     - postgres
     - redis
@@ -105,14 +112,14 @@
   environment:
     KUBECONFIG: "{{ kubeconfig_path }}"
 
-- name: Wait for postgres to be ready
+- name: Wait for postgres
   command: kubectl rollout status statefulset/postgres -n boutique --timeout=90s
   become: yes
   become_user: ubuntu
   environment:
     KUBECONFIG: "{{ kubeconfig_path }}"
 
-- name: Wait for redis to be ready
+- name: Wait for redis
   command: kubectl rollout status deployment/redis -n boutique --timeout=60s
   become: yes
   become_user: ubuntu
@@ -120,31 +127,27 @@
     KUBECONFIG: "{{ kubeconfig_path }}"
 
 - name: Apply application services
-  command: kubectl apply -f {{ work_dir }}/k8s/services/
+  command: kubectl apply -f {{ repo_dir }}/k8s/services/
   become: yes
   become_user: ubuntu
   environment:
     KUBECONFIG: "{{ kubeconfig_path }}"
 
 - name: Apply monitoring
-  command: kubectl apply -f {{ work_dir }}/k8s/monitoring/
+  command: kubectl apply -f {{ repo_dir }}/k8s/monitoring/
   become: yes
   become_user: ubuntu
   environment:
     KUBECONFIG: "{{ kubeconfig_path }}"
 
-- name: Wait for all deployments
-  command: >
-    kubectl rollout status deployment/{{ item }}
-    -n boutique --timeout=120s
+- name: Wait for deployments
+  command: kubectl rollout status deployment/{{ item }} -n boutique --timeout=120s
   loop:
     - frontend
     - productcatalogservice
     - checkoutservice
     - authservice
     - cartservice
-    - prometheus
-    - grafana
   become: yes
   become_user: ubuntu
   environment:
@@ -163,21 +166,3 @@
 - name: Show pod status
   debug:
     msg: "{{ pod_status.stdout_lines }}"
-
-- name: Get node IP
-  command: >
-    kubectl get nodes
-    -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}'
-  become: yes
-  become_user: ubuntu
-  environment:
-    KUBECONFIG: "{{ kubeconfig_path }}"
-  register: node_ip
-  changed_when: false
-
-- name: Show access URLs
-  debug:
-    msg:
-      - "App:        http://{{ node_ip.stdout }}:30080"
-      - "Grafana:    http://{{ node_ip.stdout }}:30030"
-      - "Prometheus: http://{{ node_ip.stdout }}:9090"
