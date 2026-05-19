@@ -66,6 +66,7 @@
       pull: no
     state: present
   loop: "{{ app_images }}"
+  delegate_to: localhost
   become: yes
 
 - name: Import images into k3s
