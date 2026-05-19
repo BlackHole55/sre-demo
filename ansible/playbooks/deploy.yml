@@ -20,4 +20,10 @@
   roles:
     - role: ../roles/boutique
       repo_dir: "{{ playbook_dir }}/../.."
+      app_images:
+        - { name: "frontend", path: "frontend" }
+        - { name: "productcatalogservice", path: "src/productcatalogservice" }
+        - { name: "authservice", path: "src/authservice" }
+        - { name: "checkoutservice", path: "src/checkoutservice" }
+        - { name: "cartservice", path: "src/cartservice/src" }
       tags: [deploy]
