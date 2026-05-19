@@ -321,6 +321,9 @@ jobs:
             ansible/inventory/hosts.yml
 
       - name: Run Ansible deploy playbook
+        env:
+          EC2_HOST: ${{ secrets.SSH_HOST }}
+          ANSIBLE_HOST_KEY_CHECKING: "False"
         run: |
           ansible-playbook \
             -i ansible/inventory/hosts.yml \
@@ -328,8 +331,7 @@ jobs:
             -e "image_tag=${{ needs.build.outputs.image-tag }}" \
             -e "repo_url=https://github.com/${{ github.repository }}.git" \
             -v
-        env:
-          ANSIBLE_HOST_KEY_CHECKING: "False"
+          
 
       - name: Verify deployment
         run: |

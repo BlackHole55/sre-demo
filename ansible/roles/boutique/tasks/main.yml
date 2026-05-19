@@ -10,7 +10,7 @@
         regexp: 'storageClassName: gp2'
         replace: 'storageClassName: local-path'
       with_fileglob:
-        - "{{ repo_dir }}/k8s/**/*.yaml"
+        - "{{ github.workspace }}/k8s/**/*.yaml"
 
     - name: Fix storage class standard -> local-path
       replace:
