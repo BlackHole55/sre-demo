@@ -3,7 +3,7 @@
 
 # ── Repo ────────────────────────────────────────────────────────
 repo_url:  "https://github.com/BlackHole55/sre-demo.git"
-repo_dir:  "/opt/sre-demo"
+repo_dir:  "/home/ubuntu/sre-demo"
 repo_branch: "main"
 
 # ── Docker ──────────────────────────────────────────────────────
