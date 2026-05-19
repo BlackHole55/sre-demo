@@ -21,9 +21,9 @@
     - role: ../roles/boutique
       repo_dir: "{{ playbook_dir }}/../.."
       app_images:
-        - { name: "frontend", path: "frontend" }
-        - { name: "productcatalogservice", path: "src/productcatalogservice" }
-        - { name: "authservice", path: "src/authservice" }
-        - { name: "checkoutservice", path: "src/checkoutservice" }
-        - { name: "cartservice", path: "src/cartservice/src" }
+        - { name: "frontend", context: "frontend" }
+        - { name: "productcatalogservice", context: "src/productcatalogservice" }
+        - { name: "authservice", context: "src/authservice" }
+        - { name: "checkoutservice", context: "src/checkoutservice" }
+        - { name: "cartservice", context: "src/cartservice/src" }
       tags: [deploy]
